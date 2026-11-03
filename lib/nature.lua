@@ -24,8 +24,11 @@ function N.scan()
     local names = (util and util.scandir and util.scandir(dir)) or {}
     local out = {}
     for _, n in ipairs(names) do
-      local ext = tostring(n):match("%.(%w+)$")
-      if ext and EXTS[ext:lower()] then out[#out + 1] = dir .. n end
+      n = tostring(n)
+      -- dotfiles are never sound: a Mac copy leaves "._foo.wav" resource
+      -- forks beside every file, and ".DS_Store"
+      local ext = n:match("%.(%w+)$")
+      if n:sub(1, 1) ~= "." and ext and EXTS[ext:lower()] then out[#out + 1] = dir .. n end
     end
     table.sort(out)
     found[k] = out

@@ -100,3 +100,9 @@ test("nature moment fades out on its last bar; stop silences it", function()
   for _, c in ipairs(calls) do if c[1] == "play" and c[3] == 0 then quiet[c[2]] = true end end
   assert(quiet[1] and quiet[2] and quiet[3] and not N.moment_active and N.state == "idle")
 end)
+
+test("nature scan skips dotfiles (macOS AppleDouble)", function()
+  local N = setup({["/audio/estuary/water/"] = {"._a.wav", "a.wav", ".DS_Store"}})
+  local r = N.scan()
+  assert(#r.water == 1 and r.water[1] == "/audio/estuary/water/a.wav", table.concat(r.water, ","))
+end)
