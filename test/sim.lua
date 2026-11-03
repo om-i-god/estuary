@@ -472,6 +472,11 @@ for _, k in ipairs(keys) do print(string.format("  %-12s %d", k, calls[k])) end
 print(string.format("notes per slot: %d %d %d %d;  max sounding at once: %d;  8th pairs: %d;  avoid notes: %d",
   notes_by[1], notes_by[2], notes_by[3], notes_by[4], R.stats.max_overlap, R.stats.pairs, R.stats.avoid))
 print(string.format("swells: %d  moments: %d", LOADS[2] or 0, LOADS[3] or 0))
+if AUDIO then
+  local f = include("lib/nature").scan()
+  print(string.format("scan: water=%d birds=%d wind=%d room=%d",
+    #f.water, #f.birds, #f.wind, #f.room))
+end
 
 local extra = {}
 -- a pad must not fade back in while stopped (stop, then rebuild / seed change)
