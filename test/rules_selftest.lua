@@ -148,5 +148,12 @@ expect("a short one there is fine", "", function(R, S, ev)
   S.chord = {48, 55, 59, 64}; R.on_note(0, 1, 60, 1, ev)
 end)
 
+expect("two motifs held a semitone apart", "motif rub", function(R, S, ev)
+  R.on_note(0, 1, 71, 4, ev); R.on_note(1, 2, 72, 2, ev)
+end)
+expect("a short brush between motifs is fine", "", function(R, S, ev)
+  R.on_note(0, 1, 71, 4, ev); R.on_note(1, 2, 72, 1, ev)
+end)
+
 print(n_fail == 0 and "SELFTEST ok" or (n_fail .. " SELFTEST FAILURES"))
 os.exit(n_fail == 0 and 0 or 1)

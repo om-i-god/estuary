@@ -253,6 +253,8 @@ local function sync_params()
   params:set("seed", S.seed or params:get("seed"), true)
 end
 
+local held = {}                   -- slot -> {midi, till (step)}: what each motif holds
+
 local function step_motif(i)
   local m = S.motifs[i]
   local k = "motif" .. i
@@ -260,8 +262,13 @@ local function step_motif(i)
   local audible = g > 0.02 and not S.muted[k]
   local ev = M.step(m, audible)   -- motifs that aren't sounding still step
   if not ev or not audible then return end
-  local midi = M.realize(m, ev, S.chord, S.mode, S.root_pc)
+  local others = {}
+  for j, h in pairs(held) do
+    if j ~= i and h.till > S.step then others[#others + 1] = h.midi end
+  end
+  local midi = M.realize(m, ev, S.chord, S.mode, S.root_pc, others)
   if not midi then return end     -- a rest
+  held[i] = {midi = midi, till = S.step + ev.dur}
   local dur_beats = ev.dur / 2
   local vel = (0.5 + 0.3 * m.bright) * g
   emit(k, midi, vel, dur_beats, m)

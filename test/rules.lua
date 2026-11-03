@@ -6,8 +6,9 @@
 -- no dim/aug, minor-quality chords only in warm voicings, no moment on a swell).
 -- also: chord pcs inside the mode (b3/b6 only on the borrowed iv), no
 -- tritone, no b9 over the chord root, small singable motif leaps and span,
--- no semitone between the pedal and the chord, cycles >= 7 beats, and no
--- held melody note a semitone right above a pad note.
+-- no semitone between the pedal and the chord, cycles >= 7 beats, no held
+-- melody note a semitone right above a pad note, and no two motifs holding
+-- a semitone apart for more than a beat.
 
 local T = include("lib/theory")
 
@@ -18,6 +19,7 @@ local fails, seen = {}, {}
 local cur                          -- the live state table (S)
 local ends, last_on, run, last_motif, hist = {}, {}, {}, {}, {}   -- per slot: note end, last onset, 8th-gap run
 local line = {}                    -- per slot: the cycle being sung {m, key, idx, last, lo, hi}
+local last_midi = {}               -- per slot: the latest note
 local pedal                        -- the sounding pedal {midi, till} (beats), or nil
 local now = 0                      -- latest time seen (beats)
 R.stats = {notes = 0, bars = 0, max_overlap = 0, avoid = 0, pairs = 0}
@@ -63,7 +65,15 @@ function R.on_note(t, slot, midi, dur, ev)
   end
   R.stats.max_overlap = math.max(R.stats.max_overlap, n)
   if n > 3 then fail("busy", string.format("%d slots sounding at beat %.1f", n, t)) end
+  -- two motifs a semitone apart for more than a beat is a held rub
+  for s, e in pairs(ends) do
+    if s ~= slot and e > t + EPS and math.abs((last_midi[s] or -99) - midi) == 1
+       and math.min(e, t + dur) - t > 1 + EPS then
+      fail("motif rub", string.format("slots %d and %d hold %d / %d together at beat %.1f", s, slot, last_midi[s], midi, t))
+    end
+  end
   ends[slot] = t + dur
+  last_midi[slot] = midi
 
   -- a retired motif's replacement starts a fresh run (its first note may land
   -- an 8th after the old motif's last; that gap belongs to neither)

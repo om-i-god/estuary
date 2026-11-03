@@ -363,10 +363,11 @@ end
 -- tone i is the i-th note of the chord's close-position ladder, laid out
 -- from the motif's anchor (55 + its octave), so a step is the next chord
 -- tone (2-5 semitones) and tones 1-6 sit inside about an octave and a half.
--- a held tone (> 1 beat) never sits a semitone right over a pad note: it
--- moves to the neighbouring rung. a passing note is one scale step from the
+-- a held tone (> 1 beat) never sits a semitone right over a pad note (nor
+-- a semitone from a note another motif holds): it moves to the
+-- neighbouring rung. a passing note is one scale step from the
 -- last note, toward the next tone.
-function M.realize(m, ev, chord, mode, root_pc)
+function M.realize(m, ev, chord, mode, root_pc, others)
   if not sounding(ev) then return nil end
   local md = T.MODES[mode]
   local pcs = ladder_pcs(chord, md, root_pc)
@@ -376,8 +377,11 @@ function M.realize(m, ev, chord, mode, root_pc)
     local i = ev.tone
     midi = rung(pcs, anchor, i)
     if ev.dur > 2 then
+      -- (and, given `others` = notes other motifs are holding, not a
+      -- semitone from any of them)
       local function rubs(n)
         for _, c in ipairs(chord) do if c == n - 1 then return true end end
+        for _, o in ipairs(others or {}) do if o == n - 1 or o == n + 1 then return true end end
         return false
       end
       if rubs(midi) then
