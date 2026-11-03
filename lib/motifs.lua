@@ -11,6 +11,7 @@ local CYCLES   = {14, 18, 22, 26, 30}          -- eighths = 2 x odd beats
 local MAX_EVTS = 14                            -- grid shows one event per column
 local OCT_BASE = {0, 12, 0, 12}
 local LO, HI   = 55, 91
+local MAX_SPAN = 4                             -- tone indices: 5 rungs = one octave
 
 local function pick(t) return t[math.random(#t)] end
 local function sounding(e) return e.tone ~= nil or e.pass ~= nil end
@@ -22,6 +23,15 @@ local function edges(ev)
     if sounding(e) then f = f or i; l = i end
   end
   return f, l
+end
+
+-- lowest and highest tone index
+local function tone_range(ev)
+  local lo, hi
+  for _, e in ipairs(ev) do
+    if e.tone then lo = math.min(lo or e.tone, e.tone); hi = math.max(hi or e.tone, e.tone) end
+  end
+  return lo or 1, hi or 1
 end
 
 -- passing events: never first/last sounding, always short, no tone
@@ -97,7 +107,8 @@ local function gen_events()
           end
         end
       end
-      if #evs <= MAX_EVTS and passes_ok(evs) then return evs, cycle end
+      local lo, hi = tone_range(evs)
+      if #evs <= MAX_EVTS and passes_ok(evs) and hi - lo <= MAX_SPAN then return evs, cycle end
     end
   end
   error("motif generation failed")
@@ -152,7 +163,8 @@ local function mut_swap(m)
         if t >= 1 and t <= 6 then
           local old = e.tone
           e.tone = t
-          local s = max_move(ev) <= 3 and steps_count(ev) or -1
+          local lo, hi = tone_range(ev)
+          local s = (max_move(ev) <= 3 and hi - lo <= MAX_SPAN) and steps_count(ev) or -1
           e.tone = old
           if s >= 0 then
             if s > bs then best, bs = {}, s end
@@ -273,31 +285,92 @@ local function snap(target, set, root_pc, skip)
   return target
 end
 
+-- the pitch classes a motif sings over this chord: the chord's own pcs the
+-- mode's melody allows, topped up to four from the mode (never a pc a
+-- semitone over a chord pc), each filler set in the widest gap. ascending.
+local function ladder_pcs(chord, md, root_pc)
+  local allowed = md.melody or md.steps
+  local cpc, pcs, have = {}, {}, {}
+  for _, n in ipairs(chord) do cpc[n % 12] = true end
+  for pc in pairs(cpc) do
+    if in_set(allowed, (pc - root_pc) % 12) then pcs[#pcs + 1] = pc; have[pc] = true end
+  end
+  if #pcs == 0 then pcs[1] = root_pc % 12; have[root_pc % 12] = true end
+  while #pcs < 4 do
+    table.sort(pcs)
+    local gaps = {}
+    for i, a in ipairs(pcs) do
+      local b = pcs[(i % #pcs) + 1]
+      gaps[#gaps + 1] = {a, (b - a - 1) % 12 + 1}
+    end
+    table.sort(gaps, function(x, y) return x[2] > y[2] or (x[2] == y[2] and x[1] < y[1]) end)
+    local add
+    for _, g in ipairs(gaps) do
+      local best, bd
+      for k = 1, g[2] - 1 do
+        local pc = (g[1] + k) % 12
+        if in_set(allowed, (pc - root_pc) % 12) and not cpc[(pc - 1) % 12] and not have[pc] then
+          local d = math.abs(k - g[2] / 2)
+          if not bd or d < bd then best, bd = pc, d end
+        end
+      end
+      if best then add = best; break end
+    end
+    if not add then break end
+    pcs[#pcs + 1] = add; have[add] = true
+  end
+  table.sort(pcs)
+  return pcs
+end
+
+-- ladder position i (1 = the first ladder note at or above `anchor`; may
+-- run below 1 or past the top)
+local function rung(pcs, anchor, i)
+  local n = #pcs
+  local base = anchor - (anchor % 12)
+  local first = 1                           -- index of the first pc >= anchor's pc
+  while first <= n and pcs[first] < anchor % 12 do first = first + 1 end
+  local j = (first - 1) + (i - 1)
+  return base + pcs[(j % n) + 1] + 12 * (j // n)
+end
+
+
+-- the next tone after event `ev` (cyclic), for a passing note's direction
+local function next_tone(m, ev)
+  local n, at = #m.events, nil
+  for i, e in ipairs(m.events) do if e == ev then at = i end end
+  if not at then return nil end
+  for k = 1, n - 1 do
+    local e = m.events[((at - 1 + k) % n) + 1]
+    if e.tone then return e.tone end
+  end
+end
+
+-- tone i is the i-th note of the chord's close-position ladder, laid out
+-- from the motif's anchor (55 + its octave), so a step is the next chord
+-- tone (2-5 semitones) and tones 1-6 sit inside about an octave and a half.
+-- a passing note is one scale step from the
+-- last note, toward the next tone.
 function M.realize(m, ev, chord, mode, root_pc)
   if not sounding(ev) then return nil end
   local md = T.MODES[mode]
+  local pcs = ladder_pcs(chord, md, root_pc)
+  local anchor = LO + m.oct
   local midi
   if ev.tone then
     local i = ev.tone
-    midi = chord[((i - 1) % 4) + 1] + 12 * ((i - 1) // 4) + m.oct
-    if md.melody and not in_set(md.melody, (midi - root_pc) % 12) then
-      local best, bd
-      for k = 1, 4 do
-        for _, sh in ipairs({-12, 0, 12}) do
-          local c = chord[k] + m.oct + sh
-          if in_set(md.melody, (c - root_pc) % 12) then
-            local d = math.abs(c - midi)
-            if not bd or d < bd or (d == bd and c < best) then best, bd = c, d end
-          end
-        end
-      end
-      midi = best or snap(midi, md.melody, root_pc)
-    end
-    midi = fold(midi)
+    midi = rung(pcs, anchor, i)
   else
-    local prev = m.last_note or fold(chord[1] + m.oct)
-    local cand = prev + ev.pass
-    while not in_set(md.steps, (cand - root_pc) % 12) do cand = cand + ev.pass end
+    local prev = m.last_note or rung(pcs, anchor, 1)
+    local dir = ev.pass
+    local nt = next_tone(m, ev)
+    if nt then
+      local target = rung(pcs, anchor, nt)
+      if target > prev then dir = 1 elseif target < prev then dir = -1 end
+    end
+    if prev + dir < LO or prev + dir > HI then dir = -dir end
+    local cand = prev + dir
+    while not in_set(md.steps, (cand - root_pc) % 12) do cand = cand + dir end
     if md.melody then
       local allowed = {}
       for _, p in ipairs(md.melody) do allowed[#allowed + 1] = p end
@@ -306,8 +379,9 @@ function M.realize(m, ev, chord, mode, root_pc)
         cand = snap(cand, allowed, root_pc, prev)
       end
     end
-    midi = fold(cand)
+    midi = cand
   end
+  midi = fold(midi)
   m.last_note = midi
   return midi
 end

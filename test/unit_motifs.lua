@@ -48,7 +48,7 @@ test("motif shape over 1000 seeds", function()
   end
 end)
 
-test("motion is mostly stepwise, leaps <= 3, span about an octave", function()
+test("motion is mostly stepwise, leaps <= 3, tones within 5 rungs", function()
   local steps, moves = 0, 0
   for seed = 1, 1000 do
     math.randomseed(seed)
@@ -67,6 +67,50 @@ test("motion is mostly stepwise, leaps <= 3, span about an octave", function()
     end
   end
   assert(steps / moves >= 0.7, "stepwise " .. steps / moves)
+end)
+
+-- a random bright chord in the pad's register
+local function pad_chord(root_pc)
+  while true do
+    local mode = math.random(#T.MODES)
+    local deg = math.random(7)
+    local q = T.quality(mode, deg)
+    if q == "maj" or q == "min" then
+      return T.chord(48 + root_pc, mode, deg, math.random(#T.VOICINGS)), mode
+    end
+  end
+end
+
+-- in pitch, not indices: a cycle sung over one chord spans <= 16 semitones
+-- and most moves are a chord tone away (<= 5 semitones)
+test("realised motifs are small and singable", function()
+  local small, moves, worst = 0, 0, 0
+  for seed = 1, 1000 do
+    math.randomseed(seed)
+    local m = M.new((seed % 4) + 1)
+    local root = seed % 12
+    for _ = 1, 20 do
+      local chord, mode = pad_chord(root)
+      m.last_note = nil
+      local lo, hi, prev
+      for _, e in ipairs(m.events) do
+        local midi = M.realize(m, e, chord, mode, root)
+        if midi then
+          lo, hi = math.min(lo or midi, midi), math.max(hi or midi, midi)
+          if prev then
+            moves = moves + 1
+            if math.abs(midi - prev) <= 5 then small = small + 1 end
+            assert(math.abs(midi - prev) <= 12, ("seed %d leap %d -> %d"):format(seed, prev, midi))
+          end
+          prev = midi
+        end
+      end
+      worst = math.max(worst, hi - lo)
+      assert(hi - lo <= 16, ("seed %d span %d chord %s"):format(seed, hi - lo, table.concat(chord, ",")))
+    end
+  end
+  assert(small / moves >= 0.8, "small moves " .. small / moves)
+  print(("     small moves %.2f, widest cycle %d semitones"):format(small / moves, worst))
 end)
 
 test("mutate is one change and shape survives 50 mutations", function()
