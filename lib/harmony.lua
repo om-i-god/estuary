@@ -66,17 +66,20 @@ local function warm_minor(v)
   return false
 end
 
--- a dim or aug triad hiding in the voiced pitch classes (a rootless 9th on a
--- dominant reads as a m7b5 stack)
-local function dark_stack(notes)
+-- a dark sound hiding in the voiced pitch classes: a dim or aug triad (a
+-- rootless 9th on a dominant reads as a m7b5 stack), any tritone (a dom7, a
+-- lydian #4 against the root), or a b9 over the chord's root (`root`, a pc)
+local function dark_stack(notes, root)
   local pcs = {}
   for _, n in ipairs(notes) do pcs[n % 12] = true end
   for pc in pairs(pcs) do
+    if pcs[(pc + 6) % 12] then return true end
     if not pcs[(pc + 7) % 12] then
       if pcs[(pc + 3) % 12] and pcs[(pc + 6) % 12] then return true end
       if pcs[(pc + 4) % 12] and pcs[(pc + 8) % 12] then return true end
     end
   end
+  if root and pcs[(root + 1) % 12] then return true end
   return false
 end
 
@@ -89,6 +92,14 @@ end
 
 local function step_quality(mode, st)
   return st.minor and "min" or T.quality(mode, st.deg)
+end
+
+-- may this step wear colour `col`? minor chords only in warm voicings, and
+-- one whose 9th is flat (iii in ionian) only as the plain m7
+local function colour_ok(mode, st, col)
+  if step_quality(mode, st) ~= "min" then return true end
+  if not warm_minor(col) then return false end
+  return col == 1 or st.minor or not T.b9_degree(mode, st.deg)
 end
 
 local function prog_valid(mode, prog)
@@ -204,6 +215,8 @@ local function publish(S)
   table.sort(c)
   S.chord = c
   S.chord_changed = true
+  -- a morph away from the borrowed iv still holds its b3 / b6 for a while
+  S.chord_borrow_tail = S.h.borrow_tail or false
 end
 
 -- the pedal: tonic in the calm sections, else the chord's root
@@ -238,7 +251,7 @@ local function begin_step(S)
   else
     h.colour = S.voicing
   end
-  if minor and not warm_minor(h.colour) then h.colour = 1 end
+  if not colour_ok(S.mode, st, h.colour) then h.colour = 1 end
   h.held = 0
 end
 
@@ -256,7 +269,7 @@ local function morph(S)
         t[vi] = vi == mv[1] and mv[2] or h.voices[vi]
         if vi ~= mv[1] and h.voices[vi] == mv[2] then clash = true end
       end
-      if not clash and not T.has_rub(t) and not dark_stack(t) then pick_i = qi; break end
+      if not clash and not T.has_rub(t) and not dark_stack(t, h.root_abs) then pick_i = qi; break end
     end
     if pick_i then
       local mv = table.remove(h.queue, pick_i)
@@ -266,6 +279,7 @@ local function morph(S)
       h.queue = {}
     end
   end
+  if #h.queue == 0 then h.borrow_tail = false end
   publish(S)
 end
 
@@ -356,20 +370,20 @@ function H.retarget(S, instant)
     begin_step(S)
   end
   local st = h.prog[h.i]
-  if step_quality(S.mode, st) == "min" and not warm_minor(h.colour or 1) then
-    h.colour = 1
-  end
+  if not colour_ok(S.mode, st, h.colour or 1) then h.colour = 1 end
   local colour = h.colour or 1
   local base = 48 + S.root_pc
+  h.root_abs = (S.root_pc + T.degree(0, S.mode, st.deg)) % 12
   local function voice_raw(col)
     return st.minor and minor_iv_notes(base, S.mode, col) or T.chord(base, S.mode, st.deg, col)
   end
   local raw = voice_raw(colour)
-  -- never a dim / aug triad in the stack: fall back to a plain colour
-  if dark_stack(raw) then
+  -- never a dim / aug triad, tritone or b9 in the stack: fall back to a
+  -- plain colour
+  if dark_stack(raw, h.root_abs) then
     for _, col in ipairs({2, 3, 1, 4}) do
       local r = voice_raw(col)
-      if not dark_stack(r) and (step_quality(S.mode, st) ~= "min" or warm_minor(col)) then
+      if not dark_stack(r, h.root_abs) and colour_ok(S.mode, st, col) then
         colour, raw = col, r
         break
       end
@@ -378,8 +392,10 @@ function H.retarget(S, instant)
   end
   tidy(raw)
   local target = (S.harmony == 1 or not h.voices) and raw or lead(h.voices, raw)
+  local morphing = S.harmony == 3 and h.voices and not instant
+  h.borrow_tail = morphing and (S.chord_borrowed and not st.borrowed) or false
 
-  if S.harmony == 3 and h.voices and not instant then
+  if morphing then
     -- lead() kept each voice's slot: queue the ones that move
     h.queue = {}
     for vi = 1, 4 do

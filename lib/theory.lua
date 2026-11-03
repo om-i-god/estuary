@@ -43,7 +43,7 @@ T.VOICINGS = {
   {name = "add9",      degs = {0, 2, 4, 8}},
   {name = "6/9",       degs = {0, 4, 5, 8}},
   {name = "sus2",      degs = {0, 1, 4, 7}},
-  {name = "quartal",   degs = {0, 3, 6, 9}},
+  {name = "quartal",   degs = {2, 5, 8, 11}},  -- perfect 4ths over the chord (3-6-9-12)
   {name = "open",      degs = {0, 4, 8, 11}},   -- open 5th + 9
   {name = "rootless9", degs = {2, 4, 6, 8}},
 }
@@ -52,6 +52,12 @@ for i, v in ipairs(T.VOICINGS) do T.VOICING_NAMES[i] = v.name end
 
 -- voicings allowed on minor-quality chords: maj7 (m7), rootless9 (m9), open
 T.WARM_MINOR = {1, 7, 6}
+
+-- a minor chord on `degree` whose diatonic 9th is a semitone over its root
+-- (iii in ionian): only the plain m7 keeps that b9 out of the stack
+function T.b9_degree(mode, degree)
+  return (T.degree(0, mode, degree + 1) - T.degree(0, mode, degree)) % 12 == 1
+end
 
 -- midi note for scale degree d (1-based; may run past 7 or below 1)
 function T.degree(base, mode, d)
