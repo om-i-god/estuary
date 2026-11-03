@@ -204,7 +204,9 @@ local function apply_bar()
   -- a water swell closes the filters a little
   tweak("tone", tone * (1 - 0.25 * N.level))
   tweak("echo_time", ECHO_DIVS[params:get("echo_div")] * beat)
-  tweak("echo_fb", params:get("echo_fb"))
+  -- at 1/8 a long feedback tail turns every note into a run of 8ths
+  local div = params:get("echo_div")
+  tweak("echo_fb", div == 1 and math.min(0.6, params:get("echo_fb")) or params:get("echo_fb"))
   tweak("echo_tone", 0.3 + tone * 0.5)
   tweak("verb_size", params:get("verb_size"))
   tweak("verb_send", 0.5 + space * 0.5)

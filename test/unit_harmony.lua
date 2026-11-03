@@ -179,3 +179,18 @@ test("iii in ionian is only ever the plain m7", function()
   local q = T.chord(48, 1, 1, 5)
   assert(table.concat(q, ",") == "52,57,62,67", "quartal on I " .. table.concat(q, ","))
 end)
+
+test("the borrowed iv only follows IV, over a major tonic", function()
+  for seed = 1, 200 do
+    for mode = 1, #T.MODES do
+      local prev
+      run(seed, mode, function(S)
+        if S.chord_borrowed and prev ~= nil and not prev.borrowed then
+          assert(T.quality(mode, 1) == "maj", ("s%d m%d iv over a minor tonic"):format(seed, mode))
+          assert(prev.deg == 4, ("s%d m%d iv after degree %s"):format(seed, mode, tostring(prev.deg)))
+        end
+        prev = {deg = S.chord_degree, borrowed = S.chord_borrowed}
+      end)
+    end
+  end
+end)

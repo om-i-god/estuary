@@ -135,9 +135,11 @@ local function build(S)
   local degs = pick(pool)
   local lens = pick(LENS[#degs])
   for i, d in ipairs(degs) do steps[i] = {deg = d, bars = lens[i]} end
-  -- now and then the loop ends on the soft minor iv (adoption enforces
-  -- the 1-in-4-loops limit)
-  if math.random() < 0.3 and T.quality(S.mode, 4) == "maj" then
+  -- now and then IV turns soft minor: iv after a loop that ends on IV,
+  -- over a major tonic only (in dorian it would be aeolian's b6). adoption
+  -- enforces the 1-in-4-loops limit
+  if math.random() < 0.3 and T.quality(S.mode, 4) == "maj" and T.quality(S.mode, 1) == "maj"
+     and steps[#steps].deg == 4 then
     steps[#steps + 1] = {deg = 4, bars = pick({8, 8, 16}), minor = true, borrowed = true}
   end
   return steps
