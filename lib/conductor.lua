@@ -257,7 +257,7 @@ local function swell_changed(S)
   else
     S.root_pc = (S.root_pc + pick({5, 7, -5, -7})) % 12
     S.key_moved = true
-    H.retarget(S)
+    H.retarget(S, true)
   end
 end
 

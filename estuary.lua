@@ -136,7 +136,7 @@ local function apply_bar()
 
   -- pad: follows the bloom's gain; re-voiced (crossfaded) when the chord moves
   local muted = S.muted
-  local pg = muted.pad and 0 or (S.gain.pad or 0)
+  local pg = (muted.pad or not S.playing) and 0 or (S.gain.pad or 0)
   tweak("pad_level", params:get("pad_level") * pg)
   if S.chord_changed and S.playing then
     S.chord_changed = false
@@ -526,9 +526,11 @@ end
 ------------------------------------------------------------------------
 
 -- a key / mode / voicing change by hand re-voices the chord at once; the
--- harmony module rebuilds a loop the new mode would turn dim or aug
+-- harmony module rebuilds a loop the new mode would turn dim or aug. the jump
+-- is instant (no morph through the old key's notes, which the new key's
+-- melody would rub against)
 local function rekey()
-  if ready then H.retarget(S) end
+  if ready then H.retarget(S, true) end
 end
 
 local function setup_params()
@@ -571,14 +573,14 @@ local function setup_params()
   params:add_option("harmony", "harmony", H.NAMES, 3)
   params:set_action("harmony", function(v)
     S.harmony = v
-    if ready then H.new_prog(S); H.retarget(S) end
+    if ready then H.new_prog(S); H.retarget(S, true) end
   end)
   local vnames = {table.unpack(T.VOICING_NAMES)}
   vnames[H.AUTO] = "auto (bloom)"
   params:add_option("voicing", "chord voicing", vnames, H.AUTO)
   params:set_action("voicing", function(v)
     S.voicing = v
-    if ready then H.new_prog(S); H.retarget(S) end
+    if ready then H.new_prog(S); H.retarget(S, true) end
   end)
 
   params:add_separator("MIX")

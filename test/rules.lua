@@ -12,7 +12,7 @@ local R = {}
 local EPS = 1e-6
 local fails, seen = {}, {}
 local cur                          -- the live state table (S)
-local ends, last_on, run = {}, {}, {}   -- per slot: note end, last onset, 8th-gap run
+local ends, last_on, run, last_motif, hist = {}, {}, {}, {}, {}   -- per slot: note end, last onset, 8th-gap run
 R.stats = {notes = 0, bars = 0, max_overlap = 0, avoid = 0, pairs = 0}
 
 local function fail(rule, detail)
@@ -35,6 +35,7 @@ end
 
 function R.on_note(t, slot, midi, dur, ev)
   R.stats.notes = R.stats.notes + 1
+  if cur then R.check_live(cur) end
 
   -- never more than 3 slots sounding at the same instant (by note duration)
   local n = 1
@@ -45,7 +46,16 @@ function R.on_note(t, slot, midi, dur, ev)
   if n > 3 then fail("busy", string.format("%d slots sounding at beat %.1f", n, t)) end
   ends[slot] = t + dur
 
-  -- onsets: nothing closer than an 8th; eighths only as the single pair
+  -- a retired motif's replacement starts a fresh run (its first note may land
+  -- an 8th after the old motif's last; that gap belongs to neither)
+  local mo = cur and cur.motifs and cur.motifs[slot]
+  if mo ~= last_motif[slot] then run[slot] = 0; last_on[slot] = nil; last_motif[slot] = mo end
+
+  -- onsets: nothing closer than an 8th; eighths only as the single pair.
+  -- `t` comes from the sim's own sync accounting (not the step counter), so a
+  -- wrong clock division shows up here. a {1,1} pair makes two consecutive
+  -- 0.5-beat gaps (three onsets); a third in a row means two adjacent pairs,
+  -- and the structural check in on_bar (<= 2 eighth notes per motif) backs it.
   if last_on[slot] then
     local gap = t - last_on[slot]
     if gap < 0.5 - EPS then
@@ -54,12 +64,21 @@ function R.on_note(t, slot, midi, dur, ev)
     if math.abs(gap - 0.5) < EPS then
       run[slot] = (run[slot] or 0) + 1
       if run[slot] == 1 then R.stats.pairs = R.stats.pairs + 1 end
-      if run[slot] >= 3 then fail("run", "slot " .. slot .. " ran eighths at beat " .. t) end
+      if run[slot] >= 3 then
+        local d = {}
+        for _, e in ipairs(cur and cur.motifs and cur.motifs[slot] and cur.motifs[slot].events or {}) do
+          d[#d + 1] = (sounding(e) and "n" or "r") .. e.dur
+        end
+        fail("run", "slot " .. slot .. " ran eighths at beat " .. t .. " motif " .. table.concat(d, " ") .. " recent " .. table.concat(hist[slot], " "))
+      end
     else
       run[slot] = 0
     end
   end
   last_on[slot] = t
+  hist[slot] = hist[slot] or {}
+  table.insert(hist[slot], string.format("%.1f/%d", t, ev.dur))
+  if #hist[slot] > 6 then table.remove(hist[slot], 1) end
 
   -- avoid notes: a semitone over a chord pc, itself not in the chord
   local pcs = chord_pcs()
@@ -67,7 +86,8 @@ function R.on_note(t, slot, midi, dur, ev)
   if not pcs[pc] and pcs[(pc - 1) % 12] then
     R.stats.avoid = R.stats.avoid + 1
     if dur > 1 + EPS then
-      fail("avoid long", string.format("avoid note %d lasts %.1f beats (slot %d)", midi, dur, slot))
+      fail("avoid long", string.format("avoid note %d lasts %.1f beats (slot %d) chord {%s} mode %s root %s ev tone=%s pass=%s",
+        midi, dur, slot, table.concat(cur.chord or {}, " "), tostring(cur.mode), tostring(cur.root_pc), tostring(ev.tone), tostring(ev.pass)))
     end
     local m = cur and cur.motifs and cur.motifs[slot]
     if m then
@@ -87,15 +107,25 @@ local function warm(v)
   return false
 end
 
-function R.on_bar(S)
-  cur = S
-  R.stats.bars = R.stats.bars + 1
+-- chord and nature checks against the live state. run every bar AND on every
+-- note, so a hand retarget replaced before the next bar sample is still seen.
+function R.check_live(S)
   local bar = S.track_bar
-
   -- chord: no rub, no dim / aug, minor only warm
   if S.chord then
     if T.has_rub(S.chord) then
       fail("rub", string.format("semitone rub in chord {%s} at bar %d", table.concat(S.chord, " "), bar))
+    end
+    -- the voiced notes themselves: no dim or aug triad hiding in the stack
+    local pcs = {}
+    for _, n in ipairs(S.chord) do pcs[n % 12] = true end
+    for pc in pairs(pcs) do
+      if pcs[(pc + 3) % 12] and pcs[(pc + 6) % 12] and not pcs[(pc + 7) % 12] then
+        fail("dark", "diminished triad in the voiced notes {" .. table.concat(S.chord, " ") .. "} at bar " .. bar)
+      end
+      if pcs[(pc + 4) % 12] and pcs[(pc + 8) % 12] and not pcs[(pc + 7) % 12] then
+        fail("dark", "augmented triad in the voiced notes {" .. table.concat(S.chord, " ") .. "} at bar " .. bar)
+      end
     end
     local q = S.chord_borrowed and "min" or T.quality(S.mode, S.chord_degree)
     if q == "dim" or q == "aug" then
@@ -111,6 +141,15 @@ function R.on_bar(S)
   if S.moment_active and S.nature_state and S.nature_state ~= "idle" then
     fail("moment+swell", "moment active during a " .. S.nature_state .. " swell at bar " .. bar)
   end
+
+end
+
+function R.on_bar(S)
+  cur = S
+  R.stats.bars = R.stats.bars + 1
+  local bar = S.track_bar
+
+  R.check_live(S)
 
   -- at most 3 audible, unmuted motifs
   local audible = 0

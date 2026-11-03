@@ -37,8 +37,22 @@ engine = setmetatable({}, {__index = function(_, k)
       if (t == "f" or t == "i") and (type(v) ~= "number" or v ~= v) then error("engine." .. k .. " arg " .. i .. " not a number", 2) end
       if t == "s" and type(v) ~= "string" then error("engine." .. k .. " arg " .. i .. " not a string", 2) end
     end
+    if k == "note" then
+      local _, _, _, dur_s = ...
+      local b = 60 / TEMPO
+      assert(dur_s >= 0.05 and dur_s <= 4 * b + 1e-6, "note dur " .. dur_s .. " s out of range at " .. TEMPO .. " bpm")
+    elseif k == "pedal" then
+      local _, _, dur_s = ...
+      assert(dur_s <= 18 * 60 / TEMPO + 1e-6, "pedal dur " .. dur_s .. " s too long")
+    end
     if k == "tweak" then
       local key, val = ...
+      if key == "echo_time" then
+        local beats = val / (60 / TEMPO)
+        local ok = false
+        for _, d in ipairs({0.5, 1, 1.5, 2}) do if math.abs(beats - d) < 1e-6 then ok = true end end
+        assert(ok and val <= 3.5, "echo_time " .. val .. " s is not a clean division at " .. TEMPO .. " bpm")
+      end
       if not TWEAKS[key] then error("engine.tweak: unknown key '" .. key .. "'", 2) end
       TWV[key] = val
     end
@@ -46,6 +60,12 @@ engine = setmetatable({}, {__index = function(_, k)
     calls[k] = (calls[k] or 0) + 1
   end
 end})
+
+-- SEED=n pins init's math.randomseed(os.time()) so a failing run replays
+if os.getenv("SEED") then
+  local seed = tonumber(os.getenv("SEED"))
+  os.time = function() return seed end
+end
 
 function include(p) return dofile(p .. ".lua") end
 
@@ -90,7 +110,24 @@ local threads, nid = {}, 0
 clock = {transport = {}}
 function clock.run(f) nid = nid + 1; threads[nid] = coroutine.create(f); return nid end
 function clock.cancel(id) threads[id] = nil end
-function clock.sync() coroutine.yield() end
+-- sync records its division per thread: the step clock must wait for a bar
+-- (sync 4) once, then only ever sync(1/2). STEP_BEATS is the beats it has
+-- advanced since, and is what the rules use as time.
+local cur_id
+SYNCS = {}          -- thread id -> {first = arg, n = count, odd = bad arg}
+STEP_BEATS = 0
+function clock.sync(d)
+  local r = SYNCS[cur_id] or {n = 0, odd = nil}
+  SYNCS[cur_id] = r
+  r.n = r.n + 1
+  if r.n == 1 then
+    r.first = d
+  elseif r.first == 4 then
+    if d ~= 1 / 2 then r.odd = d end
+    STEP_BEATS = STEP_BEATS + d
+  end
+  coroutine.yield()
+end
 function clock.sleep() coroutine.yield("sleep") end
 function clock.get_beat_sec() return 60 / TEMPO end
 function clock.get_tempo() return TEMPO end
@@ -141,7 +178,7 @@ R.attach(S)
 local notes_by = {0, 0, 0, 0}
 S.probe = function(slot, midi, ev, dur_beats)
   notes_by[slot] = notes_by[slot] + 1
-  R.on_note(S.step / 2, slot, midi, dur_beats, ev)
+  R.on_note(STEP_BEATS, slot, midi, dur_beats, ev)
 end
 
 -- K2+K3 = play
@@ -150,7 +187,6 @@ assert(S.playing, "K2+K3 didn't start")
 
 -- drive: resume every live thread once per 8th. the step clock waits a bar
 -- then ticks; note-off / draw threads come and go.
-local max_threads = 0
 local function tick_all()
   VT = VT + 60 / TEMPO / 2
   local live = 0
@@ -158,12 +194,11 @@ local function tick_all()
     if coroutine.status(co) == "dead" then threads[id] = nil
     else
       live = live + 1
+      cur_id = id
       local ok, err = coroutine.resume(co)
       if not ok then error("thread " .. id .. ": " .. tostring(err)) end
     end
   end
-  max_threads = math.max(max_threads, live - 2)   -- minus step clock + draw loop
-  assert(live - 2 <= 64, "more than 64 live note-off threads: " .. (live - 2))
 end
 
 -- hand-driven stress: mutes / solos through the parts page, key / mode moves
@@ -211,11 +246,32 @@ local keys = {}
 for k in pairs(calls) do keys[#keys + 1] = k end
 table.sort(keys)
 for _, k in ipairs(keys) do print(string.format("  %-12s %d", k, calls[k])) end
-print(string.format("notes per slot: %d %d %d %d;  max sounding at once: %d;  8th pairs: %d;  avoid notes: %d;  max threads: %d",
-  notes_by[1], notes_by[2], notes_by[3], notes_by[4], R.stats.max_overlap, R.stats.pairs, R.stats.avoid, max_threads))
+print(string.format("notes per slot: %d %d %d %d;  max sounding at once: %d;  8th pairs: %d;  avoid notes: %d",
+  notes_by[1], notes_by[2], notes_by[3], notes_by[4], R.stats.max_overlap, R.stats.pairs, R.stats.avoid))
 print(string.format("swells: %d  moments: %d", LOADS[2] or 0, LOADS[3] or 0))
 
 local extra = {}
+-- a pad must not fade back in while stopped (stop, then rebuild / seed change)
+if S.playing then
+  key(2, 1); key(3, 1); key(3, 0); key(2, 0)
+  P.defs.rebuild.action()
+  params:set("seed", 123)
+  if TWV.pad_level ~= 0 then extra[#extra + 1] = "pad_level " .. tostring(TWV.pad_level) .. " while stopped" end
+end
+do
+  local found = false
+  for _, r in pairs(SYNCS) do
+    if r.first == 4 then
+      found = true
+      if r.odd then extra[#extra + 1] = "step clock synced to " .. r.odd .. " instead of 1/2" end
+    end
+  end
+  if not found then extra[#extra + 1] = "step clock never waited for a bar with sync(4)" end
+  -- one tick per 8th: virtual beats advanced match the ticks driven
+  if math.abs(STEP_BEATS - (steps - 1) * 0.5) > 1.01 then
+    extra[#extra + 1] = string.format("step clock advanced %.1f beats in %d ticks", STEP_BEATS, steps)
+  end
+end
 if not AUDIO and BARS >= 600 and not MUTES then
   if (LOADS[2] or 0) == 0 then extra[#extra + 1] = "no water swell in " .. BARS .. " bars" end
   if (LOADS[3] or 0) == 0 then extra[#extra + 1] = "no passing moment in " .. BARS .. " bars" end

@@ -66,6 +66,20 @@ local function warm_minor(v)
   return false
 end
 
+-- a dim or aug triad hiding in the voiced pitch classes (a rootless 9th on a
+-- dominant reads as a m7b5 stack)
+local function dark_stack(notes)
+  local pcs = {}
+  for _, n in ipairs(notes) do pcs[n % 12] = true end
+  for pc in pairs(pcs) do
+    if not pcs[(pc + 7) % 12] then
+      if pcs[(pc + 3) % 12] and pcs[(pc + 6) % 12] then return true end
+      if pcs[(pc + 4) % 12] and pcs[(pc + 8) % 12] then return true end
+    end
+  end
+  return false
+end
+
 -- is this step safe in `mode`? never a dim / aug triad
 local function valid(mode, st)
   if st.minor then return T.quality(mode, 4) == "maj" end
@@ -242,7 +256,7 @@ local function morph(S)
         t[vi] = vi == mv[1] and mv[2] or h.voices[vi]
         if vi ~= mv[1] and h.voices[vi] == mv[2] then clash = true end
       end
-      if not clash and not T.has_rub(t) then pick_i = qi; break end
+      if not clash and not T.has_rub(t) and not dark_stack(t) then pick_i = qi; break end
     end
     if pick_i then
       local mv = table.remove(h.queue, pick_i)
@@ -347,8 +361,21 @@ function H.retarget(S, instant)
   end
   local colour = h.colour or 1
   local base = 48 + S.root_pc
-  local raw = st.minor and minor_iv_notes(base, S.mode, colour)
-              or T.chord(base, S.mode, st.deg, colour)
+  local function voice_raw(col)
+    return st.minor and minor_iv_notes(base, S.mode, col) or T.chord(base, S.mode, st.deg, col)
+  end
+  local raw = voice_raw(colour)
+  -- never a dim / aug triad in the stack: fall back to a plain colour
+  if dark_stack(raw) then
+    for _, col in ipairs({2, 3, 1, 4}) do
+      local r = voice_raw(col)
+      if not dark_stack(r) and (step_quality(S.mode, st) ~= "min" or warm_minor(col)) then
+        colour, raw = col, r
+        break
+      end
+    end
+    h.colour = colour
+  end
   tidy(raw)
   local target = (S.harmony == 1 or not h.voices) and raw or lead(h.voices, raw)
 
