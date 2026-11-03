@@ -75,7 +75,8 @@ local theme = 1
 local vis_chord, vis_state, vis_moment   -- what the visuals were last told
 local page  = 1
 local msg, msg_t = nil, 0
-local pedal_pc_last, pedal_bar = nil, -99   -- what the pedal last sounded
+local pedal_pc_last, pedal_bar = nil, -99   -- the sounding pedal (midi, nil = none), when struck
+local PEDAL_FLOOR = 28                       -- E1: nothing lower
 
 local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 
@@ -140,6 +141,55 @@ local function emit(part, notes, vel, dur_beats, m)
   end
 end
 
+-- the pedal's register: the highest note of its pitch class at least a 4th
+-- under the pad, low enough that no chord note sits a semitone from it (in
+-- the bass, or a major 7th above it). the sounding pedal stays put while it
+-- still clears. nil = the pedal rests under this chord.
+local function pedal_clears(n, chord)
+  for _, c in ipairs(chord) do
+    local d = c - n
+    if d == 1 or d == -1 or d == 11 then return false end
+  end
+  return true
+end
+
+local function place_pedal(pc, chord, cur)
+  local top = chord[1] - 5
+  if cur and cur % 12 == pc and cur <= top and pedal_clears(cur, chord) then return cur end
+  local n = top - ((top - pc) % 12)
+  while n >= PEDAL_FLOOR do
+    if pedal_clears(n, chord) then return n end
+    n = n - 12
+  end
+  return nil
+end
+
+-- let the sounding pedal go (the engine releases it over 2 s)
+local function pedal_off()
+  if not pedal_pc_last then return end
+  pedal_pc_last = nil
+  engine.pedal(0, 0, 0)
+  if S.pedal_probe then S.pedal_probe(nil) end
+end
+
+-- pedal: a soft low note under the chord at its gain; again when the pitch
+-- moves, else every four bars so it never lapses. thinned, muted or with no
+-- clean place under this chord, it lets go
+local function pedal_follow()
+  local g = S.muted.pedal and 0 or (S.gain.pedal or 0)
+  local midi = S.playing and g > 0.02 and S.pedal_pc
+    and place_pedal((S.root_pc + S.pedal_pc) % 12, S.chord, pedal_pc_last)
+  if midi then
+    if midi ~= pedal_pc_last or S.track_bar - pedal_bar >= 4 then
+      pedal_pc_last, pedal_bar = midi, S.track_bar
+      emit("pedal", midi, 0.7 * g, 4.5 * 4)
+      if S.pedal_probe then S.pedal_probe(midi, 4.5 * 4) end
+    end
+  else
+    pedal_off()
+  end
+end
+
 ------------------------------------------------------------------------
 -- bar-rate macros: bloom + user knobs -> engine
 ------------------------------------------------------------------------
@@ -184,17 +234,7 @@ local function apply_bar()
     end
   end
 
-  -- pedal: a soft low note under the chord at its gain; again when the pitch
-  -- moves, else every four bars so it never lapses
-  local g = muted.pedal and 0 or (S.gain.pedal or 0)
-  if S.playing and g > 0.02 and S.pedal_pc then
-    local midi = 36 + (S.root_pc + S.pedal_pc) % 12
-    if midi ~= pedal_pc_last or S.track_bar - pedal_bar >= 4 then
-      pedal_pc_last, pedal_bar = midi, S.track_bar
-      emit("pedal", midi, 0.7 * g, 4.5 * 4)
-      if S.pedal_probe then S.pedal_probe(midi, 4.5 * 4) end
-    end
-  end
+  pedal_follow()
 end
 
 ------------------------------------------------------------------------
@@ -299,6 +339,7 @@ stop = function(from_loop)
   if main_clock and not from_loop then clock.cancel(main_clock) end
   main_clock = nil
   O.stop()
+  pedal_off()
   -- water and bed go quiet with the music
   engine.nature_play(1, 0, 3)
   engine.nature_play(2, 0, 2)
@@ -628,12 +669,20 @@ end
 -- params
 ------------------------------------------------------------------------
 
--- a key / mode / voicing change by hand re-voices the chord at once; the
+-- a key / mode / voicing change by hand re-voices the chord at once (pad
+-- and pedal included); the
 -- harmony module rebuilds a loop the new mode would turn dim or aug. the jump
 -- is instant (no morph through the old key's notes, which the new key's
 -- melody would rub against)
 local function rekey()
-  if ready then H.retarget(S, true) end
+  if not ready then return end
+  H.retarget(S, true)
+  -- the pad and the pedal follow now, not on the next bar
+  if S.playing then
+    S.chord_changed = false
+    emit("pad", S.chord)
+    pedal_follow()
+  end
 end
 
 local function setup_params()

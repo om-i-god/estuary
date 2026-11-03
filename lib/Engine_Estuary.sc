@@ -16,7 +16,7 @@
 // commands (formats are parsed by the headless sim, keep them literal)
 //   note        voice midi vel dur pan bright send   (voice 1 rhodes 2 bell 3 sine 4 marimba)
 //   pad         m1 m2 m3 m4     (crossfades from the current pad over pad_xfade s)
-//   pedal       midi vel dur
+//   pedal       midi vel dur   (one voice: a new pedal releases the old; vel 0 only releases)
 //   nature_load slot path       (1 bed, 2 swell, 3 moment)
 //   nature_play slot level fade (1/2 loop from a random position when rising
 //                                from silence; 3 one-shot, level 0 stops it)
@@ -31,7 +31,7 @@ Engine_Estuary : CroneEngine {
   var voiceGroup, fxGroup;
   var mainBus, echoBus, verbBus, padBus, natBus;
   var keyBus, inAmpBus, natAmpBus;
-  var padSynth, padMixSynth, natFxSynth, echoSynth, verbSynth, masterSynth, listenSynth;
+  var padSynth, pedalSynth, padMixSynth, natFxSynth, echoSynth, verbSynth, masterSynth, listenSynth;
   var natBufs, natSynths, natLevels;
   var st, fx, fxMap, fxVals;
 
@@ -159,11 +159,12 @@ Engine_Estuary : CroneEngine {
       Out.ar(verbOut, sig * verb);
     }).add;
 
-    // pedal: low sine plus a quiet octave above
+    // pedal: low sine plus a quiet octave above. gate 0 lets it go over 2 s
     SynthDef(\est_pedal, {
-      arg out, verbOut, freq=65, amp=0.2, dur=4;
+      arg out, verbOut, freq=65, amp=0.2, dur=4, gate=1;
       var env = EnvGen.kr(Env([0, 1, 0.8, 0], [0.06, dur, (dur * 0.3).max(1.5)], [2, -1, -3]), doneAction: 2);
-      var sig = (SinOsc.ar(freq) + (SinOsc.ar((freq * 2)) * 0.25)) * env * amp;
+      var rel = EnvGen.kr(Env.asr(0, 1, 2.0, -3), gate, doneAction: 2);
+      var sig = (SinOsc.ar(freq) + (SinOsc.ar((freq * 2)) * 0.25)) * env * rel * amp;
       sig = sig ! 2;
       Out.ar(out, sig);
       Out.ar(verbOut, sig * 0.25);
@@ -335,11 +336,17 @@ Engine_Estuary : CroneEngine {
     });
 
     this.addCommand(\pedal, "fff", { |msg|
-      Synth(\est_pedal, [
-        \out, mainBus.index, \verbOut, verbBus.index,
-        \freq, msg[1].midicps, \amp, ((msg[2].clip(0, 1) * 0.25) * st[\pedal_level]),
-        \dur, msg[3].max(0.2)
-      ], voiceGroup);
+      var old = pedalSynth;
+      if(old.notNil, { old.set(\gate, 0); pedalSynth = nil });
+      if(msg[2] > 0, {
+        var syn = Synth(\est_pedal, [
+          \out, mainBus.index, \verbOut, verbBus.index,
+          \freq, msg[1].midicps, \amp, ((msg[2].clip(0, 1) * 0.25) * st[\pedal_level]),
+          \dur, msg[3].max(0.2)
+        ], voiceGroup);
+        pedalSynth = syn;
+        syn.onFree({ if(pedalSynth === syn, { pedalSynth = nil }) });
+      });
     });
 
     this.addCommand(\nature_load, "is", { |msg|
