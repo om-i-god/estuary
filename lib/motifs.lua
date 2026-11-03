@@ -43,6 +43,35 @@ local function passes_ok(ev)
   return true
 end
 
+-- largest tone move in an event list, counting the loop's seam (last tone
+-- back to the first): that move is heard on every repeat
+local function max_move(ev)
+  local first, prev, mx = nil, nil, 0
+  for _, e in ipairs(ev) do
+    if e.tone then
+      if prev then mx = math.max(mx, math.abs(e.tone - prev)) end
+      first = first or e.tone
+      prev = e.tone
+    end
+  end
+  if first then mx = math.max(mx, math.abs(first - prev)) end
+  return mx
+end
+
+-- stepwise moves, seam included
+local function steps_count(ev)
+  local first, prev, n = nil, nil, 0
+  for _, e in ipairs(ev) do
+    if e.tone then
+      if prev and math.abs(e.tone - prev) == 1 then n = n + 1 end
+      first = first or e.tone
+      prev = e.tone
+    end
+  end
+  if first and first ~= prev and math.abs(first - prev) == 1 then n = n + 1 end
+  return n
+end
+
 local function gen_events()
   for _ = 1, 200 do
     local n = math.random(3, 7)
@@ -108,7 +137,8 @@ local function gen_events()
         end
       end
       local lo, hi = tone_range(evs)
-      if #evs <= MAX_EVTS and passes_ok(evs) and hi - lo <= MAX_SPAN then return evs, cycle end
+      if #evs <= MAX_EVTS and passes_ok(evs) and hi - lo <= MAX_SPAN
+         and max_move(evs) <= 3 then return evs, cycle end
     end
   end
   error("motif generation failed")
@@ -129,29 +159,6 @@ function M.new(slot)
     send   = 0.2 + math.random() * 0.6,
     pos = 1, left = 0, intro = 2,
   }
-end
-
--- largest tone move in an event list
-local function max_move(ev)
-  local prev, mx = nil, 0
-  for _, e in ipairs(ev) do
-    if e.tone then
-      if prev then mx = math.max(mx, math.abs(e.tone - prev)) end
-      prev = e.tone
-    end
-  end
-  return mx
-end
-
-local function steps_count(ev)
-  local prev, n = nil, 0
-  for _, e in ipairs(ev) do
-    if e.tone then
-      if prev and math.abs(e.tone - prev) == 1 then n = n + 1 end
-      prev = e.tone
-    end
-  end
-  return n
 end
 
 local function mut_swap(m)
@@ -181,12 +188,12 @@ local function mut_swap(m)
 end
 
 -- a rest grows/shrinks by 4 eighths (2 beats): the only step that keeps the
--- cycle an odd number of beats
+-- cycle an odd number of beats. never below the shortest cycle (7 beats)
 local function mut_rest(m)
   local opts = {}
   for i, e in ipairs(m.events) do
     if not sounding(e) then
-      if e.dur - 4 >= 2 then opts[#opts + 1] = {i, -4} end
+      if e.dur - 4 >= 2 and m.cycle - 4 >= CYCLES[1] then opts[#opts + 1] = {i, -4} end
       if m.cycle + 4 <= CYCLES[#CYCLES] then opts[#opts + 1] = {i, 4} end
     end
   end
@@ -203,6 +210,8 @@ local function mut_rotate(m)
   for i = 1, n do r[i] = ev[(i % n) + 1] end
   if not passes_ok(r) then return false end
   m.events = r
+  -- the playhead stays on the same event, so the line carries on unbroken
+  m.pos = ((m.pos - 2) % n) + 1
   return true
 end
 
@@ -215,7 +224,7 @@ function M.mutate(m)
   for _, k in ipairs(order) do
     if fns[k](m) then return k end
   end
-  return "swap"
+  return nil                      -- nothing could change
 end
 
 -- flip event i between a note and a rest (the grid). refused (false) unless
@@ -335,13 +344,14 @@ local function rung(pcs, anchor, i)
 end
 
 
--- the next tone after event `ev` (cyclic), for a passing note's direction
-local function next_tone(m, ev)
+-- the nearest tone after (dir 1) or before (dir -1) event `ev`, cyclic: a
+-- passing note leans from the one before toward the one after
+local function near_tone(m, ev, dir)
   local n, at = #m.events, nil
   for i, e in ipairs(m.events) do if e == ev then at = i end end
   if not at then return nil end
   for k = 1, n - 1 do
-    local e = m.events[((at - 1 + k) % n) + 1]
+    local e = m.events[((at - 1 + dir * k) % n) + 1]
     if e.tone then return e.tone end
   end
 end
@@ -361,9 +371,10 @@ function M.realize(m, ev, chord, mode, root_pc)
     local i = ev.tone
     midi = rung(pcs, anchor, i)
   else
-    local prev = m.last_note or rung(pcs, anchor, 1)
+    -- (a slot coming in mid-cycle hasn't sung the tone before: use it)
+    local prev = m.last_note or rung(pcs, anchor, near_tone(m, ev, -1) or 1)
     local dir = ev.pass
-    local nt = next_tone(m, ev)
+    local nt = near_tone(m, ev, 1)
     if nt then
       local target = rung(pcs, anchor, nt)
       if target > prev then dir = 1 elseif target < prev then dir = -1 end

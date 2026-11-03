@@ -134,6 +134,8 @@ test("mutate is one change and shape survives 50 mutations", function()
         assert(#diff == 1, "rest diffs " .. #diff)
         local a, b = before[diff[1]], m.events[diff[1]]
         assert(not sounding(a) and not sounding(b) and a.dur ~= b.dur)
+      elseif kind == nil then
+        assert(#diff == 0, "nil mutation changed " .. #diff)
       else
         error("kind " .. tostring(kind))
       end
@@ -246,4 +248,49 @@ test("toggle keeps the shape rules and the cycle; refuses what would break them"
   assert(not M.toggle(m, 1) and m.events[1].tone == 1)
   assert(M.toggle(m, 4) and m.events[4].tone == 3 and not m.events[4].pass)
   assert(not M.toggle(m, 5) and not m.events[5].tone, "last rest must stay")
+end)
+
+-- index distance between consecutive tones, the loop's seam included
+local function cyclic_leap(m)
+  local first, prev, mx = nil, nil, 0
+  for _, e in ipairs(m.events) do
+    if e.tone then
+      if prev then mx = math.max(mx, math.abs(e.tone - prev)) end
+      first = first or e.tone; prev = e.tone
+    end
+  end
+  return math.max(mx, math.abs(first - prev))
+end
+
+test("200 mutations keep the seam small and the cycle >= 7 beats", function()
+  for seed = 1, 1000 do
+    math.randomseed(seed)
+    local m = M.new((seed % 4) + 1)
+    assert(cyclic_leap(m) <= 3, "new motif seam " .. cyclic_leap(m))
+    for k = 1, 200 do
+      M.mutate(m)
+      assert(cyclic_leap(m) <= 3, ("seed %d mut %d seam leap %d"):format(seed, k, cyclic_leap(m)))
+      assert(m.cycle >= 14, ("seed %d mut %d cycle %d"):format(seed, k, m.cycle))
+    end
+  end
+end)
+
+test("a swap still works after a rotate", function()
+  local swaps = 0
+  for seed = 1, 300 do
+    math.randomseed(seed)
+    local m = M.new((seed % 4) + 1)
+    -- rotate by hand until the old seam sits inside the list
+    local n = #m.events
+    local r = {}
+    for i = 1, n do r[i] = m.events[(i % n) + 1] end
+    m.events = r
+    local tries = 0
+    repeat
+      tries = tries + 1
+      local kind = M.mutate(m)
+      if kind == "swap" then swaps = swaps + 1 end
+    until kind == "swap" or tries > 20
+  end
+  assert(swaps >= 280, "swaps after rotate " .. swaps)
 end)
