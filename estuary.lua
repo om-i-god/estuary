@@ -346,10 +346,8 @@ stop = function(from_loop)
   main_clock = nil
   O.stop()
   pedal_off()
-  -- water and bed go quiet with the music
-  engine.nature_play(1, 0, 3)
-  engine.nature_play(2, 0, 2)
-  N.state, N.level = "idle", 0
+  -- water, bed and any passing moment go quiet with the music
+  N.stop()
   tweak("pad_level", 0)
   flash("stop")
 end

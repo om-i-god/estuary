@@ -75,9 +75,21 @@ function N.moment(S)
   return true
 end
 
+-- everything quiet now (transport stop): bed, water and any moment
+function N.stop()
+  engine.nature_play(1, 0, 3)
+  engine.nature_play(2, 0, 2)
+  engine.nature_play(3, 0, 1)
+  N.state, N.level = "idle", 0
+  moment_left, N.moment_active = 0, false
+end
+
 function N.bar(S)
   if moment_left > 0 then
     moment_left = moment_left - 1
+    -- a moment is small: it fades out over its last bar, whatever the
+    -- clip's length, so it is gone before a swell may start
+    if moment_left == 1 then engine.nature_play(3, 0, bar_sec(S)) end
     if moment_left == 0 then N.moment_active = false end
   end
   if N.state == "idle" then return end

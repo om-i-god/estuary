@@ -21,6 +21,7 @@ local TEMPO   = tonumber(arg[4]) or 72
 
 calls = {}
 LOADS = {}
+NATURE_FAILS, MOMENT_ON = {}, nil
 -- engine stub: every command's arg count is checked against the format
 -- string in lib/Engine_Estuary.sc
 local FMT = {}
@@ -66,6 +67,20 @@ engine = setmetatable({}, {__index = function(_, k)
       TWV[key] = val
     end
     if k == "nature_load" then LOADS[(...)] = (LOADS[(...)] or 0) + 1 end
+    -- a passing moment fades out within 4 bars, and is gone before a swell
+    -- rises or once the transport stops
+    if k == "nature_play" then
+      local slot, level = ...
+      if slot == 3 and level > 0 then MOMENT_ON = STEP_BEATS
+      elseif slot == 3 then
+        if MOMENT_ON and STEP_BEATS - MOMENT_ON > 16 + 1e-6 then
+          NATURE_FAILS[#NATURE_FAILS + 1] = string.format("moment faded %.1f beats after it began", STEP_BEATS - MOMENT_ON)
+        end
+        MOMENT_ON = nil
+      elseif slot == 2 and level > 0 and MOMENT_ON then
+        NATURE_FAILS[#NATURE_FAILS + 1] = string.format("swell rose at beat %.1f over a moment begun at %.1f", STEP_BEATS, MOMENT_ON)
+      end
+    end
     calls[k] = (calls[k] or 0) + 1
   end
 end})
@@ -411,6 +426,7 @@ while bars_seen < BARS do
   assert(steps < BARS * 8 + 64 * (#STOPS + 1), "clock stalled")
   if not S.playing then
     print("stopped at bar", S.track_bar)
+    if MOMENT_ON then NATURE_FAILS[#NATURE_FAILS + 1] = "moment still playing after stop" end
     if not RESTART or #STOPS >= 4 then break end
     STOPS[#STOPS + 1] = S.track_bar
     key(2, 1); key(3, 1); key(3, 0); key(2, 0)
@@ -501,6 +517,7 @@ if S.playing then
   params:set("seed", 123)
   if TWV.pad_level ~= 0 then extra[#extra + 1] = "pad_level " .. tostring(TWV.pad_level) .. " while stopped" end
 end
+if MOMENT_ON then extra[#extra + 1] = "moment still playing after stop" end
 do
   local found = false
   for _, r in pairs(SYNCS) do
@@ -570,6 +587,8 @@ if OUTSM and S.playing == false and (calls.midi_stop or 0) ~= 1 then extra[#extr
 if MIDIM then
   for k in pairs(MIDI_HELD) do if tonumber(k:match("^(%d+):")) >= 3 then extra[#extra + 1] = "midi note " .. k .. " left hanging after stop" end end
 end
+if MOMENT_ON and STEP_BEATS - MOMENT_ON > 16 + 1e-6 then NATURE_FAILS[#NATURE_FAILS + 1] = "moment never faded" end
+for _, f in ipairs(NATURE_FAILS) do extra[#extra + 1] = f end
 local ok, fails = R.report()
 for _, f in ipairs(extra) do fails[#fails + 1] = f; ok = false end
 if ok then

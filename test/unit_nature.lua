@@ -81,3 +81,22 @@ test("nature moment lasts 4 bars", function()
   N.bar(S)
   assert(not N.moment_active)
 end)
+
+test("nature moment fades out on its last bar; stop silences it", function()
+  local N, S = setup(ALL)
+  assert(N.moment(S))
+  for _ = 1, 2 do N.bar(S) end
+  local last = calls[#calls]
+  assert(not (last[1] == "play" and last[2] == 3 and last[3] == 0), "faded too soon")
+  N.bar(S)
+  last = calls[#calls]
+  assert(last[1] == "play" and last[2] == 3 and last[3] == 0 and last[4] == S.bar_sec, "no fade on the last bar")
+  assert(N.moment(S) == false and N.moment_active)
+  N.bar(S)
+  assert(not N.moment_active)
+  assert(N.moment(S))
+  N.stop()
+  local quiet = {}
+  for _, c in ipairs(calls) do if c[1] == "play" and c[3] == 0 then quiet[c[2]] = true end end
+  assert(quiet[1] and quiet[2] and quiet[3] and not N.moment_active and N.state == "idle")
+end)
