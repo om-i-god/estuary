@@ -136,7 +136,7 @@ function R.on_note(t, slot, midi, dur, ev)
   -- note (the root over a maj7 with the 7th on top)
   if dur > 1 + EPS then
     for _, c in ipairs(cur and cur.chord or {}) do
-      if c == midi - 1 then
+      if c == midi - 1 or c == midi + 1 then
         fail("avoid reg", string.format("note %d held %.1f beats right over chord note %d (slot %d) chord {%s}",
           midi, dur, c, slot, table.concat(cur.chord, " ")))
       end
@@ -224,7 +224,7 @@ function R.check_live(S)
     if pedal and now < pedal.till then
       for _, c in ipairs(S.chord) do
         local d = c - pedal.midi
-        if d == 1 or d == -1 or d == 11 then
+        if d == 1 or d == -1 or d == 6 or d == 11 then
           fail("pedal", string.format("pedal %d against chord note %d in {%s} at bar %d", pedal.midi, c, notes, bar))
         end
       end

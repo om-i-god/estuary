@@ -14,7 +14,7 @@ the melodies, pad and pedal can also go out over USB MIDI or crow, each one: **i
 
 **pad.** a four-note chord that crossfades slowly whenever the harmony moves. it opens up as the bloom rises.
 
-**pedal.** a soft low note under the chord. it plays in the middle and upper bloom (not at the very top) and holds the key's tonic through the calm sections, so the chords move above it. it sits at least a 4th below the pad, never a semitone (or a major 7th) from a chord note; when it can't sit clear of a chord, it rests.
+**pedal.** a soft low note under the chord. it plays in the middle and upper bloom (not at the very top) and holds the key's tonic through the calm sections, so the chords move above it. it sits at least a 4th below the pad, never a semitone (or a major 7th) from a chord note or a bare tritone under one; when it can't sit clear of a chord, it rests.
 
 **bloom.** everything hangs off one slow value from 0 to 1. at the very bottom one motif plays alone over the bed, with no pad. as it rises the pad fades in, a second and a third motif join, and the pedal arrives. the bloom decides who plays, how bright the notes are and how much echo and reverb they get.
 

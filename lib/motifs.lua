@@ -380,17 +380,24 @@ function M.realize(m, ev, chord, mode, root_pc, others)
       -- (and, given `others` = notes other motifs are holding, not a
       -- semitone from any of them)
       local function rubs(n)
-        for _, c in ipairs(chord) do if c == n - 1 then return true end end
+        for _, c in ipairs(chord) do if c == n - 1 or c == n + 1 then return true end end
         for _, o in ipairs(others or {}) do if o == n - 1 or o == n + 1 then return true end end
         return false
       end
       if rubs(midi) then
-        -- inward first, so the motif's span doesn't grow
+        -- the clear rung closest to both neighbours (the last note sung and
+        -- the next tone), inward first on a tie, so neither move grows
         local lo = tone_range(m.events)
-        for _, j in ipairs(i > lo and {i - 1, i + 1} or {i + 1, i - 1}) do
-          local c = rung(pcs, anchor, j)
-          if not rubs(c) then midi = c; break end
+        local before = m.last_note or midi
+        local nt = near_tone(m, ev, 1)
+        local after = nt and rung(pcs, anchor, nt) or midi
+        local function reach(c) return math.max(math.abs(c - before), math.abs(c - after)) end
+        local best
+        for _, j in ipairs(i > lo and {i - 1, i + 1, i - 2, i + 2} or {i + 1, i - 1, i + 2, i - 2}) do
+          local c = j >= 1 and rung(pcs, anchor, j)
+          if c and not rubs(c) and (not best or reach(c) < reach(best)) then best = c end
         end
+        midi = best or midi
       end
     end
   else

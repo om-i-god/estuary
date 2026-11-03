@@ -145,12 +145,12 @@ end
 
 -- the pedal's register: the highest note of its pitch class at least a 4th
 -- under the pad, low enough that no chord note sits a semitone from it (in
--- the bass, or a major 7th above it). the sounding pedal stays put while it
+-- the bass, or a major 7th above it) or a bare tritone above it. the sounding pedal stays put while it
 -- still clears. nil = the pedal rests under this chord.
 local function pedal_clears(n, chord)
   for _, c in ipairs(chord) do
     local d = c - n
-    if d == 1 or d == -1 or d == 11 then return false end
+    if d == 1 or d == -1 or d == 6 or d == 11 then return false end
   end
   return true
 end
