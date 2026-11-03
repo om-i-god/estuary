@@ -46,6 +46,7 @@ local HIST_N = 80
 local rings, pending = {}, {}
 local drops, splashes = {}, {}
 local step_seen, step_frame = -1, 0
+local cur = 1                           -- theme on screen; ripples/rain only queue for their own
 
 local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 
@@ -281,22 +282,23 @@ local function draw_rain()
       if #splashes > 24 then table.remove(splashes, 1) end
       table.remove(drops, i)
     else
-      local tail = math.floor(d.v * 4) + 1
-      put(d.lvl, d.x, d.y, 1, 1)
-      for k = 1, tail do put(d.lvl * (1 - k / (tail + 1)) * 0.45, d.x, d.y - k, 1, 1) end
+      local tail = math.floor(d.v * 7) + 4
+      put(d.lvl, d.x, d.y, 2, 2)
+      for k = 1, tail do put(d.lvl * (1 - k / (tail + 1)) * 0.6, d.x, d.y - k, 2, 1) end
     end
   end
   for i = #splashes, 1, -1 do
     local s = splashes[i]
     local a = (frame - s.f) * SP
-    if a > 16 then
+    if a > 22 then
       table.remove(splashes, i)
     else
-      local lv = s.lvl * 0.55 * (1 - a / 16)
-      local sp = math.floor(a * 0.45)
-      put(lv, s.x - sp, GROUND, 1, 1)
-      put(lv, s.x + sp, GROUND, 1, 1)
-      if a < 4 then put(lv, s.x, GROUND - 1, 1, 1) end
+      local lv = s.lvl * 0.7 * (1 - a / 22)
+      local sp = math.floor(a * 0.4) + 1
+      put(lv, s.x - sp - 1, GROUND, 2, 1)
+      put(lv, s.x + sp, GROUND, 2, 1)
+      put(lv * 0.6, s.x - sp - 3, GROUND + 1, 2 * sp + 8, 1)
+      if a < 5 then put(lv, s.x, GROUND - 1, 2, 1) end
     end
   end
 end
@@ -400,6 +402,7 @@ function VIS.init()
   sw_state, sw_level, sw_disp, bar_pulse = "idle", 0, 0, 0
   moment_age, moment_kind = 999, nil
   step_seen = -1
+  cur = 1
 end
 
 -- kind: "note" (slot, midi, dur_s), "chord" (S), "bar" (S), "swell"
@@ -411,8 +414,8 @@ function VIS.event(kind, a, b, c)
     slot_last[slot] = b
     recent[#recent + 1] = {slot, b, c, frame}
     if #recent > 24 then table.remove(recent, 1) end
-    on_note_ripples(slot, b)
-    on_note_rain(slot, b, c)
+    if cur == 1 then on_note_ripples(slot, b) end
+    if cur == 4 then on_note_rain(slot, b, c) end
   elseif kind == "bar" then
     bar_pulse = 1
     local wet = 0
@@ -432,6 +435,11 @@ local DRAW = {draw_ripples, draw_horizon, draw_postcards, draw_rain, draw_tide, 
 function VIS.draw(i, S)
   local fn = DRAW[i]
   if not fn or not S then return end
+  if i ~= cur then
+    -- a new theme starts from calm: nothing queued while it was off screen
+    rings, pending, drops, splashes = {}, {}, {}, {}
+    cur = i
+  end
   last_S = S
   frame = frame + 1
   B  = opt("vis_brightness", 10) / 10

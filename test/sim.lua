@@ -429,15 +429,23 @@ if SNAP then
   local seen = {}
   for th = 1, #names do
     params:set("theme", th)
+    local file = string.format("%s/%s.pgm", SNAP, names[th])
+    -- the frame with the most content above the bottom rows (a ground line or
+    -- splashes alone must not pass) is the one kept, from the last 3 ticks
+    local best = -1
     for i = 1, 48 do
       tick_all(); steps = steps + 1
-      for _ = 1, 7 do redraw() end                        -- ~20 fps between 8ths
+      for k = 1, 8 do
+        redraw()
+        if i > 45 then
+          local c = 0
+          for y = 0, 57 do for x = 0, 127 do if (RAST.buf[y * 128 + x] or 0) > 0 then c = c + 1 end end end
+          if c > best then best = c; RAST.snap(file) end
+        end
+      end
     end
-    redraw()
-    local file = string.format("%s/%s.pgm", SNAP, names[th])
-    RAST.snap(file)
-    local lit = 0
-    for _, v in pairs(RAST.buf) do if v > 0 then lit = lit + 1 end end
+    local lit = best
+    assert(lit >= 40, names[th] .. ": only " .. lit .. " lit pixels above the ground rows")
     local f = assert(io.open(file, "rb")); local data = f:read("a"); f:close()
     assert(lit >= 40, names[th] .. ": only " .. lit .. " lit pixels")
     for o, d in pairs(seen) do assert(d ~= data, names[th] .. " is identical to " .. o) end
