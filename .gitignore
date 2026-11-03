@@ -1,4 +1,5 @@
-test/sc/*.wav
+.superpowers/
 luac.out
-audio/*.wav
 audio/*/
+audio/*.wav
+test/sc/*.wav
