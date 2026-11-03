@@ -91,7 +91,7 @@ screen: key and mode top left with the chord below, section top right (with `~` 
 - **ESTUARY:** play mode (set / track), phrase length (8, 16 or 32 bars), track length (6-30 min), track end (stop / next track), freeze material (stop mutations, the arc still runs), seed, rebuild from seed, new random track
 - **PERFORM:** play / stop, breathe, tide, mutate, new track now
 - **KEY:** root, mode, harmony (simple / rich / drifting), chord voicing (maj7, add9, 6/9, sus2, quartal, open, rootless9, or auto by bloom)
-- **MIX:** space (echo + reverb), tone, echo time (1/8, 1/4, 3/8, 1/2), echo feedback, reverb size, level
+- **MIX:** space (echo + reverb), tone, echo time (1/8, 1/4, 3/8, 1/2), echo feedback (held to 0.6 at 1/8), reverb size, level
 - **NATURE:** bed level, swell level, moments (off / rare / some), moment level, nature tone
 - **LEVELS:** motif level, pad level, pedal level
 - **SOUND:** motif 1-4 voice (auto, rhodes, bell, sine, marimba)
