@@ -1,0 +1,5 @@
+.superpowers/
+luac.out
+audio/*/
+audio/*.wav
+test/sc/*.wav
