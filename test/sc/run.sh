@@ -22,9 +22,14 @@ includePaths:
 excludePaths: []
 postInlineWarnings: false
 YAML
-perl -e 'alarm 120; exec @ARGV' "$SCLANG" -l "$LIB/lang.yaml" run.scd "$OUT" $EXTRA 2>&1 \
-  | grep -E "ERROR|WARNING|FAILURE|ENGINE|SMOKE|LEVELS|SEG|poll |Message|RECEIVER|not understood|nil|CHECK|exception|Exception|error|late" \
-  | grep -v "^Exception in World_OpenUDP"
+LOG=$(perl -e 'alarm 120; exec @ARGV' "$SCLANG" -l "$LIB/lang.yaml" run.scd "$OUT" $EXTRA 2>&1 \
+  | grep -E "ERROR|WARNING|FAILURE|ENGINE|SMOKE|LEVELS|SEG|poll |Message|RECEIVER|not understood|nil|CHECK|EXTRA|exception|Exception|error|late" \
+  | grep -v "^Exception in World_OpenUDP")
+echo "$LOG"
 # belt and braces: never leave a test server behind
 pkill -f "SuperCollider.app/Contents/Resources/../Resources/scsynth" 2>/dev/null
+# teeth: any failed check, error or a missing SMOKE ok fails the run
+if echo "$LOG" | grep -qE "NOT-RISING|NOT-SILENT|ERROR|FAILED"; then echo "run.sh: FAIL"; exit 1; fi
+if ! echo "$LOG" | grep -q "SMOKE ok"; then echo "run.sh: FAIL (no SMOKE ok)"; exit 1; fi
+echo "run.sh: ok"
 exit 0

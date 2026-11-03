@@ -1,5 +1,5 @@
 // test-only stand-in for norns' CroneEngine: just enough surface for
-// Engine_Gradient to alloc, register commands/polls, and be driven from sclang
+// Engine_Estuary to alloc, register commands/polls, and be driven from sclang
 CroneEngine {
   var <context, <commands, <polls;
   *new { arg context, doneCallback;

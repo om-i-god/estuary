@@ -1,5 +1,5 @@
 // compile + smoke-test Engine_Estuary: boot, alloc, fire every command,
-// render 20 s, report SMOKE / LEVELS / CHECK nature. run via test/sc/run.sh
+// render ~26 s, report SMOKE / LEVELS / CHECK nature. run via test/sc/run.sh
 var out = thisProcess.argv[0] ? "/tmp/estuary_test.wav";
 var fix = PathName(thisProcess.nowExecutingPath).pathOnly +/+ "fixtures/";
 s.options.numInputBusChannels = 0;
@@ -28,12 +28,32 @@ s.waitForBoot {
      \motif_level, 1.0, \pad_level, 1.0, \pad_xfade, 3.0, \pedal_level, 1.0,
      \bed_level, 1.0, \swell_level, 1.0, \moment_level, 1.0, \nature_tone, 0.6
     ].clump(2).do { |kv| eng.cmd(\tweak, kv[0].asString, kv[1]) };
+    // load + play in the same tick, as the script sends them: every slot
+    // must be heard (the play waits for the async load)
+    eng.cmd(\nature_load, 1, fix ++ "room.wav");  eng.cmd(\nature_play, 1, 0.6, 0.5);
+    eng.cmd(\nature_load, 2, fix ++ "water.wav"); eng.cmd(\nature_play, 2, 0.8, 0.5);
+    eng.cmd(\nature_load, 3, fix ++ "water.wav"); eng.cmd(\nature_play, 3, 0.8, 0.5);
+    3.wait;
+    [1, 2, 3].do { |k|
+      var a = eng.natAmp(k);
+      ("CHECK same-tick slot" ++ k ++ " " ++ a.round(0.0001)
+        ++ (if(a > 0.02, { " rising" }, { " NOT-RISING" }))).postln;
+    };
+    // a second moment loaded over one still playing: no error, old buffer kept
+    eng.cmd(\nature_load, 3, fix ++ "room.wav"); eng.cmd(\nature_play, 3, 0.5, 0.5);
+    1.wait;
+    [1, 2, 3].do { |k| eng.cmd(\nature_play, k, 0, 0.3) };
+    1.5.wait;
     eng.cmd(\nature_load, 1, fix ++ "room.wav");
     eng.cmd(\nature_load, 2, fix ++ "water.wav");
     eng.cmd(\nature_load, 3, fix ++ "water.wav");
     1.wait;
     eng.cmd(\listen, 1);
     eng.cmd(\pad, 48, 55, 62, 67);
+    eng.cmd(\pedal, 36, 0.5, 6);
+    eng.cmd(\pedal, 43, 0.5, 6);         // one voice: releases the first
+    0.5.wait;
+    eng.cmd(\pedal, 0, 0, 0);            // vel 0: release only
     eng.cmd(\pedal, 36, 0.5, 6);
     // 4 voices, then a second pad
     [1, 2, 3, 4].do { |v, i|
@@ -62,6 +82,8 @@ s.waitForBoot {
     eng.cmd(\nature_play, 2, 0, 2);
     // fill out to 20 s of render
     4.wait;
+    // test/sc/run.sh extra.scd: run it with ~eng set
+    thisProcess.argv[1] !? { |p| ~eng = eng; ("EXTRA " ++ p).postln; p.load };
   } { |err| ("ERROR in test body: " ++ err.errorString).postln };
   eng.polls.keysValuesDo { |k, f| ("poll " ++ k ++ " = " ++ f.value).postln };
   s.stopRecording;

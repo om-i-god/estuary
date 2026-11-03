@@ -32,7 +32,7 @@ Engine_Estuary : CroneEngine {
   var mainBus, echoBus, verbBus, padBus, natBus;
   var keyBus, inAmpBus, natAmpBus;
   var padSynth, pedalSynth, padMixSynth, natFxSynth, echoSynth, verbSynth, masterSynth, listenSynth;
-  var natBufs, natSynths, natLevels;
+  var natBufs, natSynths, natLevels, natLoading, natPending, natGen, natOnceUse;
   var st, fx, fxMap, fxVals;
 
   *new { arg context, doneCallback;
@@ -67,6 +67,10 @@ Engine_Estuary : CroneEngine {
     natBufs   = Array.fill(3, nil);
     natSynths = Array.fill(3, nil);
     natLevels = Array.fill(3, 0);
+    natLoading = Array.fill(3, false);   // a load is in flight
+    natPending = Array.fill(3, nil);     // [level, fade] asked for while loading
+    natGen     = Array.fill(3, 0);       // load count: a stale load is dropped
+    natOnceUse = IdentityDictionary.new; // buffer -> one-shots playing it
 
     // values read at spawn time (set via `tweak`)
     st = IdentityDictionary.new;
@@ -349,28 +353,51 @@ Engine_Estuary : CroneEngine {
       });
     });
 
+    // nature loads are asynchronous (a disk read on the server). a play that
+    // arrives while its slot is loading is held and applied by the load
+    // itself, so load + play in one tick (as the script sends them) is heard.
+    // a buffer is freed only once nothing plays it.
     this.addCommand(\nature_load, "is", { |msg|
       var slot = msg[1].asInteger.clip(1, 3) - 1;
       var path = msg[2].asString;
       var sf = SoundFile.new;
       if(sf.openRead(path), {
         var nc = sf.numChannels.min(2);
+        var gen = natGen[slot] + 1;
         sf.close;
+        natGen[slot] = gen;
+        natLoading[slot] = true;
+        natPending[slot] = nil;
         Buffer.readChannel(s, path, channels: if(nc == 1, { [0] }, { [0, 1] }), action: { |b|
-          var old = natBufs[slot];
-          var oldSynth = natSynths[slot];
-          natBufs[slot] = b;
-          if(slot < 2, {
-            // loop slots: a persistent silent player, replaced in place
-            if(oldSynth.notNil, { oldSynth.free });
-            natSynths[slot] = Synth(("est_natloop" ++ nc).asSymbol, [
-              \out, natBus.index, \buf, b, \ampOut, (natAmpBus.index + slot),
-              \level, 0, \startPos, (b.numFrames * 1.0.rand)
-            ], voiceGroup);
-            this.prNatRegister(slot);
-            natLevels[slot] = 0;
+          if(natGen[slot] != gen, {
+            b.free;                       // a newer load took the slot
+          }, {
+            var old = natBufs[slot];
+            var oldSynth = natSynths[slot];
+            var pend = natPending[slot];
+            natBufs[slot] = b;
+            natLoading[slot] = false;
+            natPending[slot] = nil;
+            if(slot < 2, {
+              // loop slots: a new silent player; the old one fades out first
+              natSynths[slot] = Synth(("est_natloop" ++ nc).asSymbol, [
+                \out, natBus.index, \buf, b, \ampOut, (natAmpBus.index + slot),
+                \level, 0, \startPos, (b.numFrames * 1.0.rand)
+              ], voiceGroup);
+              this.prNatRegister(slot);
+              natLevels[slot] = 0;
+              if(oldSynth.notNil, {
+                oldSynth.set(\level, 0, \fade, 0.3);
+                SystemClock.sched(0.5, { oldSynth.free; if(old.notNil, { old.free }); nil });
+              }, {
+                if(old.notNil, { old.free });
+              });
+            }, {
+              // the moment slot: the old buffer goes once no one-shot plays it
+              if(old.notNil and: { (natOnceUse[old] ? 0) <= 0 }, { old.free });
+            });
+            if(pend.notNil, { this.prNatPlay(slot, pend[0], pend[1]) });
           });
-          if(old.notNil, { old.free });
         });
       }, {
         ("estuary: nature file not found: " ++ path).postln;
@@ -381,39 +408,10 @@ Engine_Estuary : CroneEngine {
       var slot = msg[1].asInteger.clip(1, 3) - 1;
       var level = msg[2].clip(0, 1);
       var fade = msg[3].max(0.01);
-      var b = natBufs[slot];
-      var node = natSynths[slot];
-      if(b.notNil, {
-        if(slot < 2, {
-          if(node.notNil, {
-            if((level > 0) and: { natLevels[slot] <= 0.001 }, {
-              // rising from silence: restart from a random position
-              node.set(\startPos, (b.numFrames * 1.0.rand), \t_rst, 1);
-            });
-            node.set(\level, level, \fade, fade);
-            natLevels[slot] = level;
-          });
-        }, {
-          if(node.notNil, {
-            node.set(\level, 0, \fade, fade);
-            SystemClock.sched((fade + 0.2), { node.free; nil });
-            natSynths[slot] = nil;
-            fx.removeAt(\moment);
-          });
-          if(level > 0, {
-            var nc = b.numChannels;
-            var syn = Synth(("est_natonce" ++ nc).asSymbol, [
-              \out, natBus.index, \buf, b, \ampOut, (natAmpBus.index + 2),
-              \level, 0, \dur, (b.numFrames / b.sampleRate)
-            ], voiceGroup);
-            natSynths[slot] = syn;
-            this.prNatRegister(slot);
-            syn.set(\level, level, \fade, fade);
-            syn.onFree({
-              if(natSynths[2] === syn, { natSynths[2] = nil; fx.removeAt(\moment) });
-            });
-          });
-        });
+      if(natLoading[slot], {
+        natPending[slot] = [level, fade];
+      }, {
+        this.prNatPlay(slot, level, fade);
       });
     });
 
@@ -436,6 +434,49 @@ Engine_Estuary : CroneEngine {
           if(fxVals[dest[0]].isNil, { fxVals[dest[0]] = IdentityDictionary.new });
           fxVals[dest[0]].put(dest[1], val);
           if(node.notNil, { node.set(dest[1], val) });
+        });
+      });
+    });
+  }
+
+  // a nature slot to `level` over `fade` s. loops (1, 2) restart from a
+  // random place when rising from silence; slot 3 starts a one-shot (level 0
+  // stops it)
+  prNatPlay { arg slot, level, fade;
+    var b = natBufs[slot];
+    var node = natSynths[slot];
+    if(b.notNil, {
+      if(slot < 2, {
+        if(node.notNil, {
+          if((level > 0) and: { natLevels[slot] <= 0.001 }, {
+            node.set(\startPos, (b.numFrames * 1.0.rand), \t_rst, 1);
+          });
+          node.set(\level, level, \fade, fade);
+          natLevels[slot] = level;
+        });
+      }, {
+        if(node.notNil, {
+          node.set(\level, 0, \fade, fade);
+          SystemClock.sched((fade + 0.2), { if(node.isPlaying, { node.free }); nil });
+          natSynths[slot] = nil;
+          fx.removeAt(\moment);
+        });
+        if(level > 0, {
+          var nc = b.numChannels;
+          var syn = Synth(("est_natonce" ++ nc).asSymbol, [
+            \out, natBus.index, \buf, b, \ampOut, (natAmpBus.index + 2),
+            \level, 0, \dur, (b.numFrames / b.sampleRate)
+          ], voiceGroup);
+          natSynths[slot] = syn;
+          natOnceUse[b] = (natOnceUse[b] ? 0) + 1;
+          this.prNatRegister(slot);
+          syn.set(\level, level, \fade, fade);
+          syn.onFree({
+            natOnceUse[b] = natOnceUse[b] - 1;
+            if(natSynths[2] === syn, { natSynths[2] = nil; fx.removeAt(\moment) });
+            // a buffer a newer load replaced goes with its last one-shot
+            if((natOnceUse[b] <= 0) and: { natBufs[2] !== b }, { natOnceUse.removeAt(b); b.free });
+          });
         });
       });
     });
