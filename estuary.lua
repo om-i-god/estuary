@@ -71,6 +71,8 @@ local loop_gen = 0        -- bumps on each start; stale step loops exit
 local ready = false       -- params:bang done and the first track exists
 local k1, k2, k3 = false, false, false
 local k2_used, k3_used = false, false
+local k2_t, k3_t = 0, 0                    -- when K2 / K3 went down
+local TAP = 0.4                            -- s: a longer hold is not a tap
 local theme = 1
 local vis_chord, vis_state, vis_moment   -- what the visuals were last told
 local page  = 1
@@ -164,11 +166,12 @@ local function place_pedal(pc, chord, cur)
   return nil
 end
 
--- let the sounding pedal go (the engine releases it over 2 s)
+-- let the sounding pedal go: the engine releases it over 2 s, midi now
 local function pedal_off()
   if not pedal_pc_last then return end
   pedal_pc_last = nil
   engine.pedal(0, 0, 0)
+  O.release("pedal")
   if S.pedal_probe then S.pedal_probe(nil) end
 end
 
@@ -341,10 +344,12 @@ end
 -- from_loop: called inside the step clock, which exits on its own once
 -- S.playing is false (don't cancel the running coroutine from within)
 stop = function(from_loop)
+  local was = S.playing
   S.playing = false
   if main_clock and not from_loop then clock.cancel(main_clock) end
   main_clock = nil
-  O.stop()
+  -- midi stop only once (cleanup after a stop just makes sure notes are off)
+  if was then O.stop() else O.all_off() end
   pedal_off()
   -- water, bed and any passing moment go quiet with the music
   N.stop()
@@ -400,6 +405,7 @@ end
 local function toggle_mute(k)
   S.muted[k] = not S.muted[k] or nil
   C.decide(S)
+  if k == "pedal" and S.muted.pedal then pedal_off() end   -- silent at once
   flash((S.muted[k] and "mute " or "unmute ") .. k)
 end
 
@@ -474,27 +480,28 @@ function key(n, z)
     k1 = z == 1
   elseif n == 2 then
     if z == 1 then
-      k2, k2_used = true, false
+      k2, k2_used, k2_t = true, false, util.time()
       if k3 then
         if S.playing then stop() else start() end
         k2_used, k3_used = true, true
       end
     else
       k2 = false
-      if not k2_used then
+      -- a tap: quick, and no encoder turned while it was down
+      if not k2_used and util.time() - k2_t <= TAP then
         if on_parts() then toggle_mute(PART_KEYS[part_sel]) else breathe() end
       end
     end
   elseif n == 3 then
     if z == 1 then
-      k3, k3_used = true, false
+      k3, k3_used, k3_t = true, false, util.time()
       if k2 then
         if S.playing then stop() else start() end
         k2_used, k3_used = true, true
       end
     else
       k3 = false
-      if not k3_used then
+      if not k3_used and util.time() - k3_t <= TAP then
         if on_parts() then toggle_solo(PART_KEYS[part_sel]) else tide() end
       end
     end
@@ -785,6 +792,11 @@ local function setup_params()
   params:add_number("listen_hold", "hold before move (s)", 2, 60, 10)
 
   O.setup_params(vport_names, vport_ids)
+  -- back to the internal pad: voice it on the next bar, not the next chord
+  params:set_action("pad_out", function()
+    O.all_off()
+    S.chord_changed = true
+  end)
 
   params:add_separator("VISUALS")
   params:add_option("theme", "theme", VIS.names, 1)
@@ -843,6 +855,7 @@ end
 
 function cleanup()
   stop()
+  GU.cleanup()
   if draw_clock then clock.cancel(draw_clock) end
   if listen_clock then clock.cancel(listen_clock) end
 end

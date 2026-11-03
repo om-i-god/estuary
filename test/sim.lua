@@ -420,6 +420,19 @@ local STOPS = {}                -- track bars played before each track-end stop
 if RESTART then params:set("track_end", 1) end
 local bars_seen, steps = 0, 0
 local max_bars_between = 0
+-- K2 / K3: a hold (> 0.4 s) released without turning is not a tap (on the
+-- play page; MUTES has moved to the parts page)
+if not MUTES then
+  local b0, w0 = S.breathe_until, LOADS[2] or 0
+  key(2, 1); tick_all(); tick_all(); key(2, 0)
+  assert(S.breathe_until == b0, "a long K2 hold breathed")
+  key(3, 1); tick_all(); tick_all(); key(3, 0)
+  assert((LOADS[2] or 0) == w0, "a long K3 hold brought the tide")
+  steps = steps + 4
+  key(2, 1); key(2, 0)
+  assert(S.breathe_until > b0, "a K2 tap didn't breathe")
+  S.breathe_until = b0
+end
 while bars_seen < BARS do
   tick_all()
   steps = steps + 1
@@ -436,6 +449,12 @@ while bars_seen < BARS do
     bars_seen = S.step // 8
     R.on_bar(S, STEP_BEATS)
     hands(bars_seen)
+    -- a muted pedal holds no midi note
+    if OUTSM and S.muted.pedal then
+      for k in pairs(MIDI_HELD) do
+        if k:match("^1:") then PEDAL_MUTED_HELD = (PEDAL_MUTED_HELD or 0) + 1 end
+      end
+    end
     if bars_seen % 100 == 0 then
       local g = {}
       for _, k in ipairs({"motif1", "motif2", "motif3", "motif4", "pad", "pedal"}) do
@@ -510,6 +529,14 @@ if AUDIO then
 end
 
 local extra = {}
+-- pad out midi -> internal re-voices the internal pad on the next bar
+if S.playing then
+  local was = params:get("pad_out")
+  S.chord_changed = false
+  params:set("pad_out", 2); params:set("pad_out", 1)
+  if not S.chord_changed then extra[#extra + 1] = "pad_out back to internal didn't re-voice the pad" end
+  params:set("pad_out", was)
+end
 -- a pad must not fade back in while stopped (stop, then rebuild / seed change)
 if S.playing then
   key(2, 1); key(3, 1); key(3, 0); key(2, 0)
@@ -518,6 +545,13 @@ if S.playing then
   if TWV.pad_level ~= 0 then extra[#extra + 1] = "pad_level " .. tostring(TWV.pad_level) .. " while stopped" end
 end
 if MOMENT_ON then extra[#extra + 1] = "moment still playing after stop" end
+-- cleanup leaves the grid dark
+do
+  local lit, r0 = false, calls.grid_refresh or 0
+  grid_dev.all = function(_, l) lit = l == 0 end
+  cleanup()
+  if not lit or (calls.grid_refresh or 0) <= r0 then extra[#extra + 1] = "cleanup() left the grid lit" end
+end
 do
   local found = false
   for _, r in pairs(SYNCS) do
@@ -555,6 +589,7 @@ if OUTSM then
   if (calls.crow1_v or 0) == 0 then extra[#extra + 1] = "crow out 1 never moved" end
   if (calls.midi_on or 0) == 0 then extra[#extra + 1] = "no pad / pedal midi" end
   if (PEDAL_PEAK or 0) > 1 then extra[#extra + 1] = "pedal midi stacked: " .. PEDAL_PEAK .. " notes held on ch 1" end
+  if PEDAL_MUTED_HELD then extra[#extra + 1] = "pedal midi held while muted (" .. PEDAL_MUTED_HELD .. " bars)" end
   if (MIDI_CH[1] or 0) == 0 then extra[#extra + 1] = "pedal never sent midi on ch 1" end
   if (MIDI_CH[2] or 0) < 4 then extra[#extra + 1] = "pad never sent midi on ch 2" end
 end

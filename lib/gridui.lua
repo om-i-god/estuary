@@ -26,6 +26,11 @@ function GU.init(actions)
   g.key = function(x, y, z) GU.key(x, y, z) end
 end
 
+-- leave the grid dark when the script goes
+function GU.cleanup()
+  if g then g:all(0); g:refresh() end
+end
+
 local function cols() return (g and g.cols and g.cols > 0) and g.cols or 16 end
 
 function GU.key(x, y, z)
