@@ -94,6 +94,59 @@ expect("motif with too few notes", "notes", function(R, S)
   R.on_bar(S)
 end)
 expect("even-beat cycle", "cycle", function(R, S) S.motifs[1].cycle = 16; R.on_bar(S) end)
+expect("cycle under 7 beats", "short cycle", function(R, S)
+  S.motifs[1].events = {{tone = 1, dur = 2}, {tone = 2, dur = 2}, {tone = 3, dur = 2}, {dur = 4}}
+  S.motifs[1].cycle = 10
+  R.on_bar(S)
+end)
+expect("chord pitch class outside the mode", "mode", function(R, S)
+  S.chord = {48, 55, 63, 72}; R.on_bar(S)            -- Eb in C ionian
+end)
+expect("borrowed iv may carry b3 / b6", "", function(R, S)
+  S.chord = {53, 56, 60, 63}; S.chord_root_pc = 5    -- F Ab C Eb
+  S.chord_borrowed = true; S.chord_voicing = 1; R.on_bar(S)
+end)
+expect("tritone in the chord", "tritone", function(R, S)
+  S.chord = {48, 55, 59, 65}; R.on_bar(S)            -- B and F
+end)
+expect("b9 over the chord root", "b9", function(R, S)
+  S.chord = {52, 57, 65, 67}; S.chord_root_pc = 4    -- F over an E root
+  R.on_bar(S)
+end)
+expect("motif leap over an octave", "leap", function(R, S)
+  local m = S.motifs[1]
+  R.on_note(0, 1, 60, 1, m.events[1]); R.on_note(1, 1, 76, 1, m.events[2])
+end)
+expect("motif cycle spans over 16", "span", function(R, S)
+  local m = S.motifs[1]
+  R.on_note(0, 1, 60, 1, m.events[1]); R.on_note(1, 1, 70, 1, m.events[2]); R.on_note(2, 1, 78, 1, m.events[3])
+end)
+expect("a new chord starts a new line", "", function(R, S)
+  local m = S.motifs[1]
+  R.on_note(0, 1, 60, 1, m.events[1])
+  S.chord = {53, 57, 62, 64}
+  R.on_note(1, 1, 76, 1, m.events[2])
+end)
+expect("pedal a semitone under the chord", "pedal", function(R, S)
+  R.on_pedal(0, 47, 18); R.on_bar(S, 1)
+end)
+expect("pedal a major 7th under a chord note", "pedal", function(R, S)
+  S.chord = {47, 52, 55, 62}; R.on_pedal(0, 36, 18); R.on_bar(S, 1)
+end)
+expect("a released pedal is not heard", "", function(R, S)
+  S.chord = {52, 55, 62, 64}; R.on_pedal(0, 47, 18); R.on_pedal(0, nil)
+  S.chord = {48, 55, 62, 64}; R.on_bar(S, 1)
+end)
+expect("a pedal past its sustain is not heard", "", function(R, S)
+  S.chord = {52, 55, 62, 64}; R.on_pedal(0, 47, 4)
+  S.chord = {48, 55, 62, 64}; R.on_bar(S, 5)
+end)
+expect("held note right above a chord note", "avoid reg", function(R, S, ev)
+  S.chord = {48, 55, 59, 64}; R.on_note(0, 1, 60, 2, ev)   -- C over B
+end)
+expect("a short one there is fine", "", function(R, S, ev)
+  S.chord = {48, 55, 59, 64}; R.on_note(0, 1, 60, 1, ev)
+end)
 
 print(n_fail == 0 and "SELFTEST ok" or (n_fail .. " SELFTEST FAILURES"))
 os.exit(n_fail == 0 and 0 or 1)

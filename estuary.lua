@@ -192,6 +192,7 @@ local function apply_bar()
     if midi ~= pedal_pc_last or S.track_bar - pedal_bar >= 4 then
       pedal_pc_last, pedal_bar = midi, S.track_bar
       emit("pedal", midi, 0.7 * g, 4.5 * 4)
+      if S.pedal_probe then S.pedal_probe(midi, 4.5 * 4) end
     end
   end
 end

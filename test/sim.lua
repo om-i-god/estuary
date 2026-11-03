@@ -288,6 +288,11 @@ S.probe = function(slot, midi, ev, dur_beats)
   notes_by[slot] = notes_by[slot] + 1
   R.on_note(STEP_BEATS, slot, midi, dur_beats, ev)
 end
+-- the pedal as heard: midi (nil = released) and its sustain in beats; the
+-- engine's release tail adds 30%
+S.pedal_probe = function(midi, dur_beats)
+  R.on_pedal(STEP_BEATS, midi, (dur_beats or 0) * 1.3)
+end
 
 -- one channel per motif: a motif the conductor thinned (gain <= 0.02) or a hand
 -- mute sends no midi at all, and velocity is vel x gain (vel <= 0.8)
@@ -403,7 +408,7 @@ while bars_seen < BARS do
   if not S.playing then print("stopped at bar", S.track_bar); break end
   if S.step % 8 == 1 and S.step // 8 > bars_seen then
     bars_seen = S.step // 8
-    R.on_bar(S)
+    R.on_bar(S, STEP_BEATS)
     hands(bars_seen)
     if bars_seen % 100 == 0 then
       local g = {}

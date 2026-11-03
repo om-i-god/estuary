@@ -4,6 +4,10 @@
 -- never busy (<= 3 motifs at once, nothing faster than an 8th, one eighth
 -- pair per motif, avoid notes short and never last) and never dark (no rubs,
 -- no dim/aug, minor-quality chords only in warm voicings, no moment on a swell).
+-- also: chord pcs inside the mode (b3/b6 only on the borrowed iv), no
+-- tritone, no b9 over the chord root, small singable motif leaps and span,
+-- no semitone between the pedal and the chord, cycles >= 7 beats, and no
+-- held melody note a semitone right above a pad note.
 
 local T = include("lib/theory")
 
@@ -13,6 +17,9 @@ local EPS = 1e-6
 local fails, seen = {}, {}
 local cur                          -- the live state table (S)
 local ends, last_on, run, last_motif, hist = {}, {}, {}, {}, {}   -- per slot: note end, last onset, 8th-gap run
+local line = {}                    -- per slot: the cycle being sung {m, key, idx, last, lo, hi}
+local pedal                        -- the sounding pedal {midi, till} (beats), or nil
+local now = 0                      -- latest time seen (beats)
 R.stats = {notes = 0, bars = 0, max_overlap = 0, avoid = 0, pairs = 0}
 
 local function fail(rule, detail)
@@ -33,8 +40,20 @@ local function chord_pcs()
   return set
 end
 
+-- the pedal the sim heard start (midi, sustain in beats), or nil = released
+function R.on_pedal(t, midi, dur)
+  now = math.max(now, t)
+  pedal = midi and {midi = midi, till = t + dur} or nil
+  if cur then R.check_live(cur) end
+end
+
+local function event_index(m, ev)
+  for i, e in ipairs(m and m.events or {}) do if e == ev then return i end end
+end
+
 function R.on_note(t, slot, midi, dur, ev)
   R.stats.notes = R.stats.notes + 1
+  now = math.max(now, t)
   if cur then R.check_live(cur) end
 
   -- never more than 3 slots sounding at the same instant (by note duration)
@@ -79,6 +98,40 @@ function R.on_note(t, slot, midi, dur, ev)
   hist[slot] = hist[slot] or {}
   table.insert(hist[slot], string.format("%.1f/%d", t, ev.dur))
   if #hist[slot] > 6 then table.remove(hist[slot], 1) end
+
+  -- small, singable lines: within one cycle under one chord, adjacent sung
+  -- notes are <= an octave apart and the whole cycle spans <= 16 semitones
+  local mo2 = cur and cur.motifs and cur.motifs[slot]
+  local idx = event_index(mo2, ev)
+  if mo2 and idx then
+    local key = table.concat(cur.chord or {}, ",")
+    local l = line[slot]
+    if not l or l.m ~= mo2 or l.key ~= key or idx <= l.idx then
+      line[slot] = {m = mo2, key = key, idx = idx, last = midi, lo = midi, hi = midi}
+    else
+      local adjacent = true
+      for i = l.idx + 1, idx - 1 do if sounding(mo2.events[i]) then adjacent = false end end
+      if adjacent and math.abs(midi - l.last) > 12 then
+        fail("leap", string.format("slot %d leaps %d -> %d at beat %.1f chord {%s}", slot, l.last, midi, t, key))
+      end
+      l.idx, l.last = idx, midi
+      l.lo, l.hi = math.min(l.lo, midi), math.max(l.hi, midi)
+      if l.hi - l.lo > 16 then
+        fail("span", string.format("slot %d cycle spans %d-%d at beat %.1f chord {%s}", slot, l.lo, l.hi, t, key))
+      end
+    end
+  end
+
+  -- register-exact avoid: a held melody note a semitone right above a pad
+  -- note (the root over a maj7 with the 7th on top)
+  if dur > 1 + EPS then
+    for _, c in ipairs(cur and cur.chord or {}) do
+      if c == midi - 1 then
+        fail("avoid reg", string.format("note %d held %.1f beats right over chord note %d (slot %d) chord {%s}",
+          midi, dur, c, slot, table.concat(cur.chord, " ")))
+      end
+    end
+  end
 
   -- avoid notes: a semitone over a chord pc, itself not in the chord
   local pcs = chord_pcs()
@@ -135,6 +188,37 @@ function R.check_live(S)
       fail("cold minor", string.format("%s chord %s in voicing %s at bar %d",
         S.chord_borrowed and "borrowed" or "minor", tostring(S.chord_label), tostring(S.chord_voicing), bar))
     end
+    local notes = table.concat(S.chord, " ")
+    -- every pitch class from the mode; b3 / b6 only for the borrowed iv
+    -- (and while a morph is still leaving it)
+    local root = S.root_pc or 0
+    local md = T.MODES[S.mode or 1]
+    local allowed = {}
+    for _, st in ipairs(md.steps) do allowed[(root + st) % 12] = true end
+    if S.chord_borrowed or S.chord_borrow_tail then
+      allowed[(root + 3) % 12], allowed[(root + 8) % 12] = true, true
+    end
+    for pc in pairs(pcs) do
+      if not allowed[pc] then
+        fail("mode", string.format("pc %d outside %s on %d in {%s} at bar %d", pc, md.name, root, notes, bar))
+      end
+      if pcs[(pc + 6) % 12] then
+        fail("tritone", string.format("tritone in {%s} (%s %s) at bar %d", notes, tostring(S.chord_label), md.name, bar))
+      end
+    end
+    if S.chord_root_pc and pcs[(root + S.chord_root_pc + 1) % 12] then
+      fail("b9", string.format("b9 over the root of %s in {%s} (%s) at bar %d", tostring(S.chord_label), notes, md.name, bar))
+    end
+    -- the sounding pedal: no semitone against the chord, in the bass or
+    -- within the octave above it
+    if pedal and now < pedal.till then
+      for _, c in ipairs(S.chord) do
+        local d = c - pedal.midi
+        if d == 1 or d == -1 or d == 11 then
+          fail("pedal", string.format("pedal %d against chord note %d in {%s} at bar %d", pedal.midi, c, notes, bar))
+        end
+      end
+    end
   end
 
   -- nature: a passing moment never overlaps a swell
@@ -144,8 +228,9 @@ function R.check_live(S)
 
 end
 
-function R.on_bar(S)
+function R.on_bar(S, t)
   cur = S
+  if t then now = math.max(now, t) end
   R.stats.bars = R.stats.bars + 1
   local bar = S.track_bar
 
@@ -170,6 +255,7 @@ function R.on_bar(S)
     if rests < 1 then fail("rests", "motif " .. i .. " has no rest") end
     if ones > 2 then fail("pair", "motif " .. i .. " has " .. ones .. " eighth notes") end
     if m.cycle % 4 ~= 2 then fail("cycle", "motif " .. i .. " cycle of " .. m.cycle .. " eighths is not an odd number of beats") end
+    if m.cycle < 14 then fail("short cycle", "motif " .. i .. " cycle of " .. m.cycle .. " eighths is under 7 beats") end
   end
 end
 
