@@ -30,6 +30,14 @@ local function nsounding()
   return n
 end
 
+local function audible()
+  local n = 0
+  for i = 1, 4 do
+    if not S.muted["motif" .. i] and (S.gain["motif" .. i] or 0) > 0.02 then n = n + 1 end
+  end
+  return n
+end
+
 local function step_motifs()
   for i = 1, 4 do
     if S.sounding[i] then for _ = 1, 8 do M.step(S.motifs[i]) end end
@@ -56,6 +64,7 @@ for _, mp in ipairs({1, 2}) do
         maxn = math.max(maxn, n)
         assert(S.cap >= 1 and S.cap <= 3, "cap " .. tostring(S.cap))
         assert(n <= S.cap, string.format("seed %d bar %d sounding %d cap %d", seed, b, n, S.cap))
+        assert(audible() <= 3, string.format("seed %d bar %d audible %d", seed, b, audible()))
         local st = C.N.state
         if st == "rising" or st == "held" or S.track_bar < S.breathe_until then
           assert(n <= 1, string.format("seed %d bar %d busy %d under swell/breathe", seed, b, n))
@@ -73,6 +82,7 @@ for _, mp in ipairs({1, 2}) do
       local C = setup(seed, mp)
       run(C, 3000, function(b)
         assert(nsounding() <= 3 and nsounding() <= S.cap, "seed " .. seed .. " bar " .. b)
+        assert(audible() <= 3, string.format("seed %d bar %d audible %d", seed, b, audible()))
         for i = 1, 4 do
           if S.muted["motif" .. i] then assert(not S.sounding[i], "muted sounding") end
         end
@@ -180,4 +190,16 @@ test("breathe and nudge", function()
   C.nudge(S, 0.2)
   C.bar(S)
   assert(S.bloom > b - 0.05)
+end)
+
+test("solo of a fourth slot while three sound keeps <= 3 audible", function()
+  local C = setup(9, 1)
+  S.bloom = 0.9
+  for i = 1, 3 do S.sounding[i] = true; S.gain["motif" .. i] = 1 end
+  S.soloed.motif4 = true
+  for _ = 1, 20 do
+    C.bar(S)
+    assert(audible() <= 3, "audible " .. audible())
+  end
+  assert((S.gain.motif4 or 0) >= 0 )
 end)

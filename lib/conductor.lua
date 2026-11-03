@@ -201,10 +201,28 @@ function C.decide(S)
 end
 
 local function fade(S)
+  local muted = S.muted or {}
+  local audible = 0
+  -- falling (and held) parts first; a muted part is silent at once
   for _, k in ipairs(PARTS) do
     local g, t = S.gain[k] or 0, S.target[k] or 0
-    if t > g then g = math.min(t, g + FADE_UP) else g = math.max(t, g - FADE_DOWN) end
+    if muted[k] then g = 0
+    elseif t <= g then g = math.max(t, g - FADE_DOWN) end
     S.gain[k] = g
+    if g > 0.02 and k:sub(1, 5) == "motif" then audible = audible + 1 end
+  end
+  -- rising parts; a motif may leave silence only while fewer than three
+  -- motifs are audible (fade tails count)
+  for _, k in ipairs(PARTS) do
+    local g, t = S.gain[k] or 0, S.target[k] or 0
+    if t > g and not muted[k] then
+      local is_motif = k:sub(1, 5) == "motif"
+      if not is_motif or g > 0.02 or audible < 3 then
+        local ng = math.min(t, g + FADE_UP)
+        if is_motif and g <= 0.02 and ng > 0.02 then audible = audible + 1 end
+        S.gain[k] = ng
+      end
+    end
   end
 end
 
