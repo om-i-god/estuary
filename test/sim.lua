@@ -10,6 +10,7 @@
 --      OUTS=2       crow chord root + pedal gate instead
 --      LISTEN=1     fake KeyTrack feed (E minor, G major, silence, D minor)
 --      GRID=1       random grid presses every bar
+--      RESTART=1    track end = stop; K2+K3 after each stop must play a whole new track
 --      SNAP=dir     after the run, draw each theme into a real raster and write dir/<n>_<name>.pgm;
 --                   asserts each frame has >= 40 lit pixels and none repeats another
 
@@ -399,13 +400,22 @@ local function hands(bar)
   end
 end
 
+local RESTART = os.getenv("RESTART")
+local STOPS = {}                -- track bars played before each track-end stop
+if RESTART then params:set("track_end", 1) end
 local bars_seen, steps = 0, 0
 local max_bars_between = 0
 while bars_seen < BARS do
   tick_all()
   steps = steps + 1
-  assert(steps < BARS * 8 + 64, "clock stalled")
-  if not S.playing then print("stopped at bar", S.track_bar); break end
+  assert(steps < BARS * 8 + 64 * (#STOPS + 1), "clock stalled")
+  if not S.playing then
+    print("stopped at bar", S.track_bar)
+    if not RESTART or #STOPS >= 4 then break end
+    STOPS[#STOPS + 1] = S.track_bar
+    key(2, 1); key(3, 1); key(3, 0); key(2, 0)
+    assert(S.playing and S.track_bar == 0, "K2+K3 after a track-end stop didn't start a new track")
+  end
   if S.step % 8 == 1 and S.step // 8 > bars_seen then
     bars_seen = S.step // 8
     R.on_bar(S, STEP_BEATS)
@@ -537,6 +547,16 @@ if LISTEN and BARS >= 90 and not HKEY then
   if S.root_pc ~= want then extra[#extra + 1] = "listen: root ended on " .. S.root_pc .. ", wanted " .. want end
 end
 if notes_by[1] + notes_by[2] + notes_by[3] + notes_by[4] == 0 then extra[#extra + 1] = "no notes played" end
+-- track end = stop, then play: each restart plays a whole track before the next stop
+if RESTART then
+  if #STOPS < 2 then extra[#extra + 1] = "restart: only " .. #STOPS .. " track-end stops" end
+  for i = 1, #STOPS do
+    if STOPS[i] < (S.total_bars or 0) then
+      extra[#extra + 1] = string.format("restart: stop %d came after %d bars, track is %d", i, STOPS[i], S.total_bars)
+    end
+  end
+  print("restart: track bars before each stop " .. table.concat(STOPS, " "))
+end
 -- the four slots take turns: over a long hands-off run each carries >= 10%
 if BARS >= 900 and not MUTES and not GRID then
   local total = notes_by[1] + notes_by[2] + notes_by[3] + notes_by[4]

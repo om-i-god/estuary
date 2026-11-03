@@ -241,7 +241,7 @@ end
 -- one 8th step
 ------------------------------------------------------------------------
 
-local start, stop
+local start, stop, new_track
 
 -- keep the key / seed / mode params in step with the music
 local function sync_params()
@@ -321,6 +321,12 @@ end
 
 start = function()
   if S.playing then return end
+  -- a track that ended on "stop": play starts the next one (new seed, a
+  -- neighbouring key), as "next track" would have
+  if S.mode_play == 2 and S.total_bars and S.track_bar >= S.total_bars then
+    new_track(math.random(1, 9999), true)
+    flash("new track " .. S.seed)
+  end
   S.playing = true
   S.step = (S.step + 7) // 8 * 8  -- resume on a bar
   S.chord_changed = true          -- voice the pad
@@ -348,7 +354,7 @@ stop = function(from_loop)
   flash("stop")
 end
 
-local function new_track(seed, move_key)
+new_track = function(seed, move_key)
   C.new_track(S, seed, move_key)
   params:set("seed", seed, true)
   sync_params()
