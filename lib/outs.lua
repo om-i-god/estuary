@@ -102,6 +102,8 @@ local function midi_note(kind, note, vel, dur, slot)
   -- a motif is one voice: its new note ends its last (a motif that was just
   -- rewritten can't ring on under its replacement)
   if kind == "motif" then O.release("motif", slot) end
+  -- the pedal is one low voice too: a new pedal note ends the old one
+  if kind == "pedal" then O.release("pedal") end
   note_id = note_id + 1
   local id = note_id
   dev:note_on(note, clamp(math.floor(vel * 127), 1, 127), ch)

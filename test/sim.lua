@@ -161,6 +161,11 @@ local midi_dev = {
     local k = ch .. ":" .. n
     assert(not MIDI_HELD[k], "note_on for a note still held " .. k)
     MIDI_HELD[k] = true
+    if ch == 1 then
+      local c = 0
+      for key in pairs(MIDI_HELD) do if key:match("^1:") then c = c + 1 end end
+      PEDAL_PEAK = math.max(PEDAL_PEAK or 0, c)
+    end
     if MIDI_HOOK then MIDI_HOOK(n, v, ch) end
     local c = 0
     for key in pairs(MIDI_HELD) do if tonumber(key:match("^(%d+):")) >= 3 then c = c + 1 end end
@@ -458,6 +463,7 @@ if OUTSM then
   if (calls.midi_cc or 0) == 0 then extra[#extra + 1] = "no cc out" end
   if (calls.crow1_v or 0) == 0 then extra[#extra + 1] = "crow out 1 never moved" end
   if (calls.midi_on or 0) == 0 then extra[#extra + 1] = "no pad / pedal midi" end
+  if (PEDAL_PEAK or 0) > 1 then extra[#extra + 1] = "pedal midi stacked: " .. PEDAL_PEAK .. " notes held on ch 1" end
   if (MIDI_CH[1] or 0) == 0 then extra[#extra + 1] = "pedal never sent midi on ch 1" end
   if (MIDI_CH[2] or 0) < 4 then extra[#extra + 1] = "pad never sent midi on ch 2" end
 end
