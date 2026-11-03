@@ -113,6 +113,18 @@ local function retire(S, slot)
   S.born[slot] = S.track_bar
 end
 
+-- the slot rotation will bring in next: the one resting longest (ties: the
+-- lowest)
+local function next_in(S)
+  local best
+  for i = 1, 4 do
+    if not S.sounding[i] then
+      if not best or S.rest_bars[i] > S.rest_bars[best] then best = i end
+    end
+  end
+  return best
+end
+
 -- new track: seed drives the material; the key may move unless following
 function C.new_track(S, seed, move_key)
   math.randomseed(seed)
@@ -122,6 +134,12 @@ function C.new_track(S, seed, move_key)
     S.root_pc = (S.root_pc + pick({0, 5, 7, -5, 3})) % 12
   end
   S.motifs, S.born, S.sounding = {}, {}, {false, false, false, false}
+  -- who enters first is the seed's: a small head start in rest
+  S.rest_bars, S.on_bars = {0, 1, 2, 3}, {0, 0, 0, 0}
+  for i = 4, 2, -1 do
+    local j = math.random(i)
+    S.rest_bars[i], S.rest_bars[j] = S.rest_bars[j], S.rest_bars[i]
+  end
   S.track_bar, S.nudge, S.walk = 0, 0, 0
   S.breathe_until = 0
   S.swell_pending = false
@@ -143,8 +161,10 @@ end
 
 local function compute_cap(S)
   local cap = S.bloom < 0.3 and 1 or (S.bloom < 0.6 and 2 or 3)
+  -- a new motif being introduced (wanted or still heard) keeps it to two
   for i = 1, 4 do
-    if S.motifs[i].intro > 0 then cap = math.min(cap, 2) end
+    local heard = S.sounding[i] or (S.gain["motif" .. i] or 0) > 0.02
+    if heard and S.motifs[i].intro > 0 then cap = math.min(cap, 2) end
   end
   if N.state == "rising" or N.state == "held" or S.track_bar < S.breathe_until then
     cap = 1
@@ -152,8 +172,13 @@ local function compute_cap(S)
   return clamp(cap, 1, 3)
 end
 
--- hand mutes / solos decide which slots are eligible; the cap trims last
-function C.decide(S)
+-- hand mutes / solos decide which slots are eligible; the cap trims last.
+-- the four slots take turns: the longest-rested comes in first, the
+-- longest-sounding goes first, and at a phrase edge (`edge`) a full texture
+-- hands one place to a slot that has rested two phrases (the newcomer waits
+-- in fade() for the leaver's tail, so the cap holds)
+local ROTATE_PHRASES = 2
+function C.decide(S, edge)
   S.cap = compute_cap(S)
   local muted, soloed = S.muted or {}, S.soloed or {}
   local any_solo = next(soloed) ~= nil
@@ -170,17 +195,40 @@ function C.decide(S)
   for i = 1, 4 do
     if S.sounding[i] and eligible(i) then want[i] = true; n = n + 1 end
   end
-  -- fill free capacity (lowest slot first) at 4-bar edges, or when silent
-  if S.track_bar % 4 == 0 or n == 0 then
+  local function longest_on()
+    local best
     for i = 1, 4 do
-      if n >= S.cap then break end
-      if not want[i] and eligible(i) then want[i] = true; n = n + 1 end
+      if want[i] and (not best or S.on_bars[i] >= S.on_bars[best]) then best = i end
+    end
+    return best
+  end
+  -- rotate: a full texture gives the longest-sounding slot's place to one
+  -- that has rested two phrases (the leaver has sounded two phrases too)
+  if edge and n >= S.cap then
+    local due = ROTATE_PHRASES * plen(S)
+    local waiting = false
+    for i = 1, 4 do
+      if not want[i] and eligible(i) and S.rest_bars[i] >= due then waiting = true end
+    end
+    local out = longest_on()
+    if waiting and out and S.on_bars[out] >= due then want[out] = false; n = n - 1 end
+  end
+  -- fill free capacity (longest rested first) at 4-bar edges, or when silent
+  if S.track_bar % 4 == 0 or n == 0 then
+    while n < S.cap do
+      local best
+      for i = 1, 4 do
+        if not want[i] and eligible(i) and not S.sounding[i] then
+          if not best or S.rest_bars[i] > S.rest_bars[best] then best = i end
+        end
+      end
+      if not best then break end
+      want[best] = true; n = n + 1
     end
   end
-  -- enforce the cap last: drop the highest slots
-  for i = 4, 1, -1 do
-    if n <= S.cap then break end
-    if want[i] then want[i] = false; n = n - 1 end
+  -- enforce the cap last: drop the longest-sounding
+  while n > S.cap do
+    want[longest_on()] = false; n = n - 1
   end
   S.sounding = want
 
@@ -203,13 +251,15 @@ end
 local function fade(S)
   local muted = S.muted or {}
   local audible = 0
-  -- falling (and held) parts first; a muted part is silent at once
+  -- falling (and held) parts first; a muted part is silent at once. a motif
+  -- heard last bar still counts: its last note (<= 4 beats) may ring on
   for _, k in ipairs(PARTS) do
     local g, t = S.gain[k] or 0, S.target[k] or 0
+    local rang = g > 0.02
     if muted[k] then g = 0
     elseif t <= g then g = math.max(t, g - FADE_DOWN) end
     S.gain[k] = g
-    if g > 0.02 and k:sub(1, 5) == "motif" then audible = audible + 1 end
+    if (g > 0.02 or rang) and k:sub(1, 5) == "motif" then audible = audible + 1 end
   end
   -- rising parts; a motif may leave silence only while fewer than three
   -- motifs are audible (fade tails count)
@@ -230,16 +280,18 @@ end
 -- material changes
 ------------------------------------------------------------------------
 
+-- a rare retire takes the oldest resting motif, so the new one is
+-- introduced when its turn comes rather than swapped in under a sounding one
 function C.mutate(S)
   for i = 1, 4 do
     if S.sounding[i] and math.random() < 0.5 then M.mutate(S.motifs[i]) end
   end
   if math.random() < 0.08 then
-    local oldest = 1
-    for i = 2, 4 do
-      if S.born[i] < S.born[oldest] then oldest = i end
+    local oldest
+    for i = 1, 4 do
+      if not S.sounding[i] and (not oldest or S.born[i] < S.born[oldest]) then oldest = i end
     end
-    retire(S, oldest)
+    if oldest then retire(S, oldest) end
   end
 end
 
@@ -252,9 +304,10 @@ local function swell_changed(S)
   if not S.listen_follow then opts[#opts + 1] = "key" end
   local what = pick(opts)
   if what == "motif" then
-    local oldest = 1
-    for i = 2, 4 do if S.born[i] < S.born[oldest] then oldest = i end end
-    retire(S, oldest)
+    -- the slot rotation brings in next, so the new motif is the next thing
+    -- heard as the water recedes
+    local slot = next_in(S)
+    if slot then retire(S, slot) end
   elseif what == "prog" then
     H.next_prog(S)
   else
@@ -266,7 +319,7 @@ end
 
 -- phrase edge: mutations, a chance of a passing moment
 function C.phrase(S)
-  C.decide(S)
+  C.decide(S, true)
   if not S.freeze then C.mutate(S) end
   S.phrases_since_moment = (S.phrases_since_moment or 3) + 1
   local p = MOMENT_P[S.moment_freq == nil and 1 or S.moment_freq] or 0
@@ -336,6 +389,14 @@ function C.bar(S)
   end
   H.bar(S, (S.track_bar % 8) + 1)
   fade(S)
+  -- turns: bars each slot has been wanted / resting
+  for i = 1, 4 do
+    if S.sounding[i] then
+      S.on_bars[i], S.rest_bars[i] = S.on_bars[i] + 1, 0
+    else
+      S.on_bars[i], S.rest_bars[i] = 0, S.rest_bars[i] + 1
+    end
+  end
 
   S.track_bar = S.track_bar + 1
 

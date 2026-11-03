@@ -537,6 +537,15 @@ if LISTEN and BARS >= 90 and not HKEY then
   if S.root_pc ~= want then extra[#extra + 1] = "listen: root ended on " .. S.root_pc .. ", wanted " .. want end
 end
 if notes_by[1] + notes_by[2] + notes_by[3] + notes_by[4] == 0 then extra[#extra + 1] = "no notes played" end
+-- the four slots take turns: over a long hands-off run each carries >= 10%
+if BARS >= 900 and not MUTES and not GRID then
+  local total = notes_by[1] + notes_by[2] + notes_by[3] + notes_by[4]
+  for i = 1, 4 do
+    if notes_by[i] < 0.1 * total then
+      extra[#extra + 1] = string.format("slot %d played %d of %d notes (< 10%%)", i, notes_by[i], total)
+    end
+  end
+end
 if OUTSM and S.playing == false and (calls.midi_stop or 0) ~= 1 then extra[#extra + 1] = "midi stop sent " .. tostring(calls.midi_stop) .. " times" end
 if MIDIM then
   for k in pairs(MIDI_HELD) do if tonumber(k:match("^(%d+):")) >= 3 then extra[#extra + 1] = "midi note " .. k .. " left hanging after stop" end end

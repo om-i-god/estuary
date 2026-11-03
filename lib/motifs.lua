@@ -258,8 +258,11 @@ function M.toggle(m, i)
   return false
 end
 
--- advance one 8th; returns the event (rest or note) that starts on it, else nil
-function M.step(m)
+-- advance one 8th; returns the event (rest or note) that starts on it, else
+-- nil. `audible`: the slot is heard right now. the introduction counts only
+-- cycles that were heard
+function M.step(m, audible)
+  if audible then m.heard = true end
   if m.left > 0 then m.left = m.left - 1; return nil end
   local ev = m.events[m.pos]
   m.left = ev.dur - 1
@@ -267,7 +270,8 @@ function M.step(m)
   if m.pos > #m.events then
     m.pos = 1
     m.last_note = nil
-    if m.intro > 0 then m.intro = m.intro - 1 end
+    if m.heard and m.intro > 0 then m.intro = m.intro - 1 end
+    m.heard = false
   end
   return ev
 end

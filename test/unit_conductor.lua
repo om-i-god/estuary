@@ -40,7 +40,7 @@ end
 
 local function step_motifs()
   for i = 1, 4 do
-    if S.sounding[i] then for _ = 1, 8 do M.step(S.motifs[i]) end end
+    if S.sounding[i] then for _ = 1, 8 do M.step(S.motifs[i], true) end end
   end
 end
 
@@ -202,4 +202,33 @@ test("solo of a fourth slot while three sound keeps <= 3 audible", function()
     assert(audible() <= 3, "audible " .. audible())
   end
   assert((S.gain.motif4 or 0) >= 0 )
+end)
+
+test("slots take turns: each is wanted within any 4 phrases at cap 3", function()
+  for seed = 1, 10 do
+    local C = setup(seed, 1, {moment_freq = 0, freeze = true})
+    util.scandir = function() return {} end        -- no water: no swells
+    C.N.scan()
+    for i = 1, 4 do S.motifs[i].intro = 0 end
+    local last = {0, 0, 0, 0}
+    local window = 4 * S.phrase_len
+    for b = 1, 3000 do
+      S.nudge = 2                                    -- bloom pinned to the top
+      C.bar(S)
+      assert(S.cap == 3, "cap " .. S.cap)
+      for i = 1, 4 do
+        if S.sounding[i] then last[i] = b end
+        assert(b - last[i] <= window, ("seed %d slot %d unwanted for %d bars"):format(seed, i, b - last[i]))
+      end
+    end
+  end
+end)
+
+test("rotation never lets more than three be heard", function()
+  for seed = 1, 10 do
+    local C = setup(seed, 1)
+    run(C, 3000, function(b)
+      assert(audible() <= 3, ("seed %d bar %d audible %d"):format(seed, b, audible()))
+    end)
+  end
 end)

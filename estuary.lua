@@ -252,11 +252,11 @@ end
 
 local function step_motif(i)
   local m = S.motifs[i]
-  local ev = M.step(m)            -- motifs that aren't sounding still step
-  if not ev then return end
   local k = "motif" .. i
   local g = S.gain[k] or 0
-  if g <= 0.02 or S.muted[k] then return end
+  local audible = g > 0.02 and not S.muted[k]
+  local ev = M.step(m, audible)   -- motifs that aren't sounding still step
+  if not ev or not audible then return end
   local midi = M.realize(m, ev, S.chord, S.mode, S.root_pc)
   if not midi then return end     -- a rest
   local dur_beats = ev.dur / 2
