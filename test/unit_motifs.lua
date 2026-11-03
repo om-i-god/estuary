@@ -294,3 +294,24 @@ test("a swap still works after a rotate", function()
   end
   assert(swaps >= 280, "swaps after rotate " .. swaps)
 end)
+
+test("a held tone never sits a semitone right over a pad note", function()
+  local moved = 0
+  for seed = 1, 1000 do
+    math.randomseed(seed)
+    local m = M.new((seed % 4) + 1)
+    local root = seed % 12
+    for _ = 1, 20 do
+      local chord, mode = pad_chord(root)
+      m.last_note = nil
+      for _, e in ipairs(m.events) do
+        local midi = M.realize(m, e, chord, mode, root)
+        if midi and e.dur > 2 then
+          for _, c in ipairs(chord) do
+            assert(c ~= midi - 1, ("seed %d: %d held over %d in {%s}"):format(seed, midi, c, table.concat(chord, ",")))
+          end
+        end
+      end
+    end
+  end
+end)
