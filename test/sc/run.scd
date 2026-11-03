@@ -41,13 +41,17 @@ s.waitForBoot {
       1.wait;
     };
     // nature: slot 2 rises (measured on its own amp bus)
+    // slot 1 stays silent while slot 2 rises
     ~lo = eng.natAmp(2);
     eng.cmd(\nature_play, 2, 0.8, 2);
-    eng.cmd(\nature_play, 1, 0.4, 2);
     4.wait;
     ~hi = eng.natAmp(2);
-    ("CHECK nature before " ++ ~lo.round(0.0001) ++ " after " ++ ~hi.round(0.0001)
-      ++ (if(~hi > (~lo + 0.001), { " rising" }, { " NOT-RISING" }))).postln;
+    ~s1 = eng.natAmp(1);
+    ("CHECK nature slot2 before " ++ ~lo.round(0.0001) ++ " after " ++ ~hi.round(0.0001)
+      ++ (if((~lo < 0.001) and: { ~hi > 0.02 }, { " rising" }, { " NOT-RISING" }))).postln;
+    ("CHECK nature slot1 " ++ ~s1.round(0.0001)
+      ++ (if(~s1 < 0.001, { " silent" }, { " NOT-SILENT" }))).postln;
+    eng.cmd(\nature_play, 1, 0.4, 2);
     eng.cmd(\nature_play, 3, 0.6, 0.5);
     eng.cmd(\pad, 50, 57, 64, 69);
     4.do { |i|

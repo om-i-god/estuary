@@ -41,7 +41,7 @@ Engine_Estuary : CroneEngine {
 
   // last measured amplitude of a nature slot (1..3); used by the test
   natAmp { arg slot;
-    ^natAmpBus.getSynchronous(slot - 1);
+    ^natAmpBus.getnSynchronous(3)[slot - 1];
   }
 
   alloc {
