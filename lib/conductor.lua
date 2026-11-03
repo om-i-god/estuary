@@ -243,6 +243,9 @@ function C.mutate(S)
   end
 end
 
+-- the grid's rewrite: a fresh motif in this slot
+function C.rewrite(S, slot) retire(S, slot) end
+
 -- a swell has turned the tide: one change to the music
 local function swell_changed(S)
   local opts = {"motif", "prog"}

@@ -4,6 +4,12 @@
 -- env: AUDIO=<dir>  real sample folders (default: a fake tree with some files)
 --      MUTES=1      random mute / solo presses every bar
 --      HKEY=1       random hand key / mode changes every ~40 bars
+--      MIDI=1       motif_out=midi, all motifs on one channel (ch 3)
+--      MIDI=2       motif_out=both, one channel per motif; gates + velocity checked
+--      OUTS=1       pad/pedal midi, crow (lead pitch/gate, bloom, pedal pitch), CC out, transport
+--      OUTS=2       crow chord root + pedal gate instead
+--      LISTEN=1     fake KeyTrack feed (E minor, G major, silence, D minor)
+--      GRID=1       random grid presses every bar
 
 local BARS    = tonumber(arg[1]) or 300
 local PMODE   = tonumber(arg[2]) or 1
@@ -108,12 +114,24 @@ controlspec = {new = function(min, max, _, _, default) return {min = min, max = 
 -- clock ------------------------------------------------------------------
 local threads, nid = {}, 0
 clock = {transport = {}}
-function clock.run(f) nid = nid + 1; threads[nid] = coroutine.create(f); return nid end
+-- like norns, a new coroutine runs at once up to its first sync / sleep
+local cur_id
+function clock.run(f)
+  nid = nid + 1
+  local id = nid
+  threads[id] = coroutine.create(f)
+  local prev = cur_id
+  cur_id = id
+  local ok, err = coroutine.resume(threads[id])
+  cur_id = prev
+  if not ok then error("thread " .. id .. ": " .. tostring(err)) end
+  return id
+end
 function clock.cancel(id) threads[id] = nil end
 -- sync records its division per thread: the step clock must wait for a bar
 -- (sync 4) once, then only ever sync(1/2). STEP_BEATS is the beats it has
 -- advanced since, and is what the rules use as time.
-local cur_id
+VT = 0   -- virtual seconds, advanced one 8th per drive tick
 SYNCS = {}          -- thread id -> {first = arg, n = count, odd = bad arg}
 STEP_BEATS = 0
 function clock.sync(d)
@@ -128,19 +146,69 @@ function clock.sync(d)
   end
   coroutine.yield()
 end
-function clock.sleep() coroutine.yield("sleep") end
+WAKE = {}           -- thread id -> virtual time it may resume
+function clock.sleep(d) WAKE[cur_id] = VT + (d or 0); coroutine.yield("sleep") end
 function clock.get_beat_sec() return 60 / TEMPO end
 function clock.get_tempo() return TEMPO end
 
 -- misc -------------------------------------------------------------------
-midi = {vports = {{name = "fake synth"}}, connect = function() return {} end}
-poll = {set = function() return {start = function() end} end}
+MIDI_CH, MIDI_HELD, MIDI_PEAK = {}, {}, 0
+local midi_dev = {
+  note_on = function(_, n, v, ch)
+    assert(n >= 0 and n <= 127 and v >= 1 and v <= 127 and ch >= 1 and ch <= 16, "bad midi note_on")
+    calls.midi_on = (calls.midi_on or 0) + 1
+    MIDI_CH[ch] = (MIDI_CH[ch] or 0) + 1
+    local k = ch .. ":" .. n
+    assert(not MIDI_HELD[k], "note_on for a note still held " .. k)
+    MIDI_HELD[k] = true
+    if MIDI_HOOK then MIDI_HOOK(n, v, ch) end
+    local c = 0
+    for key in pairs(MIDI_HELD) do if tonumber(key:match("^(%d+):")) >= 3 then c = c + 1 end end
+    MIDI_PEAK = math.max(MIDI_PEAK, c)
+  end,
+  note_off = function(_, n, _, ch)
+    calls.midi_off = (calls.midi_off or 0) + 1
+    MIDI_HELD[ch .. ":" .. n] = nil
+  end,
+  cc = function(_, num, val, ch)
+    assert(num >= 0 and num <= 127 and val >= 0 and val <= 127 and ch >= 1 and ch <= 16, "cc out of range")
+    calls.midi_cc = (calls.midi_cc or 0) + 1
+  end,
+  start = function() calls.midi_start = (calls.midi_start or 0) + 1 end,
+  stop = function() calls.midi_stop = (calls.midi_stop or 0) + 1 end,
+}
+midi = {vports = {{name = "fake synth"}}, connect = function() return midi_dev end}
+polls = {}
+poll = {set = function(name, fn)
+  polls[name] = fn
+  return {start = function() end}
+end}
+local function crow_out(n)
+  return setmetatable({slew = 0}, {
+    __newindex = function(t, k, v)
+      if k == "volts" then
+        assert(type(v) == "number" and v > -5.1 and v < 10.1, "crow volts out of range: " .. tostring(v))
+        calls["crow" .. n .. "_v"] = (calls["crow" .. n .. "_v"] or 0) + 1
+      end
+      rawset(t, k, v)
+    end,
+  })
+end
+crow = {connected = function() return true end,
+        output = {crow_out(1), crow_out(2), crow_out(3), crow_out(4)}}
+grid_dev = {cols = 16, rows = 8, leds = 0}
+function grid_dev:all() end
+function grid_dev:led(x, y, l)
+  assert(x >= 1 and x <= 16 and y >= 1 and y <= 8 and l >= 0 and l <= 15, "bad led " .. x .. "," .. y .. "," .. l)
+  self.leds = self.leds + 1
+end
+function grid_dev:refresh() calls.grid_refresh = (calls.grid_refresh or 0) + 1 end
+grid = {connect = function() return grid_dev end}
 screen = setmetatable({text_extents = function() return 20, 6 end},
   {__index = function() return function() end end})
 -- sample folders: a fake tree with a few files, or AUDIO=<dir> for real ones
 local AUDIO = os.getenv("AUDIO")
 _path = {audio = AUDIO and (AUDIO:gsub("/?$", "/")) or "/fake/audio/", data = "/nonexistent/"}
-VT = 0   -- virtual seconds, advanced one 8th per drive tick
 util = {
   time = function() return VT end,
   file_exists = function() return false end,
@@ -165,6 +233,35 @@ init()
 if MINUTES > 0 then params:set("track_minutes", MINUTES) end
 params:set("play_mode", PMODE)
 
+local MIDIM, OUTSM = tonumber(os.getenv("MIDI") or ""), tonumber(os.getenv("OUTS") or "")
+local LISTEN, GRID = os.getenv("LISTEN"), os.getenv("GRID")
+if MIDIM then
+  params:set("motif_dev", 2)
+  params:set("motif_out", MIDIM == 2 and 3 or 2)
+  if MIDIM == 2 then params:set("motif_lanes", 6) end        -- own channel each
+end
+if OUTSM then
+  params:set("pad_dev", 2); params:set("pad_out", 3)
+  params:set("pedal_dev", 2); params:set("pedal_out", 2)
+  params:set("transport_dev", 2)
+  params:set("cc_dev", 2); params:set("cc_bloom", 20); params:set("cc_tone", 21); params:set("cc_phrase", 22)
+  if OUTSM == 2 then
+    params:set("crow_1", 4); params:set("crow_2", 7)          -- chord root, pedal gate
+  else
+    params:set("crow_1", 2); params:set("crow_2", 3)          -- lead pitch, lead gate
+    params:set("crow_3", 5); params:set("crow_4", 6)          -- bloom, pedal pitch
+  end
+end
+if LISTEN then params:set("listen_on", 2) end
+-- fake KeyTrack feed by bar: E minor (16), G major (7 -> rel. E minor),
+-- silence, then D minor (14)
+local function feed(bar)
+  if bar < 24 then return 16, 0.1
+  elseif bar < 48 then return 7, 0.1
+  elseif bar < 60 then return 0, 0.0001
+  else return 14, 0.1 end
+end
+
 local function getS()
   for j = 1, 60 do
     local name, val = debug.getupvalue(key, j)
@@ -181,19 +278,80 @@ S.probe = function(slot, midi, ev, dur_beats)
   R.on_note(STEP_BEATS, slot, midi, dur_beats, ev)
 end
 
+-- one channel per motif: a motif the conductor thinned (gain <= 0.02) or a hand
+-- mute sends no midi at all, and velocity is vel x gain (vel <= 0.8)
+if MIDIM == 2 then
+  MIDI_HOOK = function(_, v, ch)
+    if ch < 3 or ch > 6 then return end
+    local k = "motif" .. (ch - 2)
+    local g = S.gain[k] or 0
+    assert(g > 0.02 and not S.muted[k], "midi note from a thinned / muted " .. k .. " gain " .. g)
+    assert(v <= 127 * 0.8 * g + 1.5, string.format("midi velocity %d too loud for %s gain %.2f", v, k, g))
+    MIDI_GATED = (MIDI_GATED or 0) + 1
+  end
+end
+
 -- K2+K3 = play
 key(2, 1); key(3, 1); key(3, 0); key(2, 0)
 assert(S.playing, "K2+K3 didn't start")
 
+-- grid: a step press that would leave the motif with < 3 notes (or no rest)
+-- is refused; one that keeps the shape is taken
+do
+  local function snap(m)
+    local t = {}
+    for _, e in ipairs(m.events) do t[#t + 1] = (e.tone or "-") .. "/" .. (e.pass or "-") .. "/" .. e.dur end
+    return m.cycle .. ":" .. table.concat(t, " ")
+  end
+  local m = S.motifs[1]
+  m.events = {{dur = 2, tone = 1}, {dur = 2, tone = 2}, {dur = 2, tone = 3}, {dur = 2}, {dur = 6}}
+  m.cycle = 14
+  local before = snap(m)
+  grid_dev.key(2, 4, 1); grid_dev.key(2, 4, 0)       -- sounding step: would leave 2 notes
+  assert(snap(m) == before, "grid press left a motif with 2 notes: " .. snap(m))
+  grid_dev.key(14, 4, 1)                              -- no such step
+  assert(snap(m) == before, "press past the last event changed the motif")
+  grid_dev.key(4, 4, 1); grid_dev.key(4, 4, 0)       -- a rest -> note: 4 notes, 1 rest left
+  assert(m.events[4].tone and not m.events[4].pass and snap(m):match("^14:"), "rest -> note refused: " .. snap(m))
+  grid_dev.key(5, 4, 1); grid_dev.key(5, 4, 0)       -- last rest -> note: no rest left, refused
+  assert(not m.events[5].tone, "grid press removed the last rest")
+  grid_dev.key(4, 4, 1); grid_dev.key(4, 4, 0)       -- back to a rest
+  assert(snap(m) == before, "note -> rest didn't restore the motif: " .. snap(m))
+  grid_dev.key(15, 4, 1)                              -- mute motif 1
+  assert(S.muted.motif1, "grid col 15 didn't mute"); grid_dev.key(15, 4, 1)
+  assert(not S.muted.motif1, "grid col 15 didn't unmute")
+end
+
 -- drive: resume every live thread once per 8th. the step clock waits a bar
 -- then ticks; note-off / draw threads come and go.
+PEAK_THREADS = 0
 local function tick_all()
   VT = VT + 60 / TEMPO / 2
-  local live = 0
+  if LISTEN and polls.in_key then
+    local k, a = feed(S.track_bar)
+    if math.random() < 0.15 then k = math.random(0, 23) end    -- tracker noise
+    polls.in_key(k); polls.in_amp(a)
+  end
+  -- sleepers (note-offs) wake before the step clock, as they would if their
+  -- time had come first; a sleeper wakes once its virtual time has passed
+  local order, live = {}, 0
   for id, co in pairs(threads) do
     if coroutine.status(co) == "dead" then threads[id] = nil
     else
       live = live + 1
+      order[#order + 1] = id
+    end
+  end
+  PEAK_THREADS = math.max(PEAK_THREADS, live)
+  table.sort(order, function(a, b)
+    local wa, wb = WAKE[a] and 0 or 1, WAKE[b] and 0 or 1
+    if wa ~= wb then return wa < wb end
+    return a < b
+  end)
+  for _, id in ipairs(order) do
+    local co = threads[id]
+    if co and (not WAKE[id] or WAKE[id] <= VT + 1e-9) then
+      WAKE[id] = nil
       cur_id = id
       local ok, err = coroutine.resume(co)
       if not ok then error("thread " .. id .. ": " .. tostring(err)) end
@@ -212,6 +370,12 @@ local function hands(bar)
     enc(2, math.random(-6, 6))
     if math.random() < 0.7 then
       if math.random() < 0.6 then key(2, 1); key(2, 0) else key(3, 1); key(3, 0) end
+    end
+  end
+  if GRID then
+    for _ = 1, 3 do
+      local x, y = math.random(1, 16), math.random(1, 8)
+      if not (y == 8 and (x == 16 or x == 14)) then grid_dev.key(x, y, 1) end
     end
   end
   if HKEY and bar % 40 == 20 then
@@ -276,7 +440,37 @@ if not AUDIO and BARS >= 600 and not MUTES then
   if (LOADS[2] or 0) == 0 then extra[#extra + 1] = "no water swell in " .. BARS .. " bars" end
   if (LOADS[3] or 0) == 0 then extra[#extra + 1] = "no passing moment in " .. BARS .. " bars" end
 end
+assert(PEAK_THREADS <= 64, "live threads peaked at " .. PEAK_THREADS)
+if MIDIM then
+  if (calls.midi_on or 0) == 0 then extra[#extra + 1] = "no midi notes" end
+  if MIDIM == 1 then
+    if (MIDI_CH[3] or 0) == 0 then extra[#extra + 1] = "no midi note-ons on ch 3" end
+    if (calls.note or 0) > 0 then extra[#extra + 1] = "engine.note called with motif_out=midi" end
+  else
+    if (calls.note or 0) == 0 then extra[#extra + 1] = "motif_out=both made no internal notes" end
+    if (MIDI_GATED or 0) == 0 then extra[#extra + 1] = "gate hook never ran" end
+  end
+  if MIDI_PEAK > 3 then extra[#extra + 1] = "peak concurrent midi motif notes " .. MIDI_PEAK end
+  print(string.format("midi: %d note-ons, peak concurrent %d, peak live threads %d", calls.midi_on or 0, MIDI_PEAK, PEAK_THREADS))
+end
+if OUTSM then
+  if calls.midi_start ~= 1 then extra[#extra + 1] = "midi start sent " .. tostring(calls.midi_start) .. " times" end
+  if (calls.midi_cc or 0) == 0 then extra[#extra + 1] = "no cc out" end
+  if (calls.crow1_v or 0) == 0 then extra[#extra + 1] = "crow out 1 never moved" end
+  if (calls.midi_on or 0) == 0 then extra[#extra + 1] = "no pad / pedal midi" end
+  if (MIDI_CH[1] or 0) == 0 then extra[#extra + 1] = "pedal never sent midi on ch 1" end
+  if (MIDI_CH[2] or 0) < 4 then extra[#extra + 1] = "pad never sent midi on ch 2" end
+end
+if LISTEN and BARS >= 90 and not HKEY then
+  local T = include("lib/theory")
+  local want = T.root_for(2, S.mode)
+  if S.root_pc ~= want then extra[#extra + 1] = "listen: root ended on " .. S.root_pc .. ", wanted " .. want end
+end
 if notes_by[1] + notes_by[2] + notes_by[3] + notes_by[4] == 0 then extra[#extra + 1] = "no notes played" end
+if OUTSM and S.playing == false and (calls.midi_stop or 0) ~= 1 then extra[#extra + 1] = "midi stop sent " .. tostring(calls.midi_stop) .. " times" end
+if MIDIM then
+  for k in pairs(MIDI_HELD) do if tonumber(k:match("^(%d+):")) >= 3 then extra[#extra + 1] = "midi note " .. k .. " left hanging after stop" end end
+end
 local ok, fails = R.report()
 for _, f in ipairs(extra) do fails[#fails + 1] = f; ok = false end
 if ok then

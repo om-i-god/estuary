@@ -19,6 +19,12 @@
 -- hold K1: E1 theme  E2 page
 -- parts page: K2 mute  K3 solo
 --
+-- grid: row 1 phrase, row 2 bloom (press to pull it),
+--   row 3 mute parts, rows 4-7 motifs (press an event: note <-> rest),
+--   row 8 breathe / mutate / tide / new track / play
+-- params > LISTEN: follow the key of the audio input
+-- params > MOTIF / PAD / PEDAL OUT: internal, midi or both
+--
 -- samples: dust/audio/estuary/
 --   water/ birds/ wind/ room/
 --
@@ -31,6 +37,9 @@ local M   = include("lib/motifs")
 local H   = include("lib/harmony")
 local C   = include("lib/conductor")
 local N   = C.N                  -- the conductor's nature module (it has state)
+local O   = include("lib/outs")
+local L   = include("lib/listen")
+local GU  = include("lib/gridui")
 
 -- visuals arrive with lib/visuals; until then a placeholder with the same
 -- interface (draw(theme, S), event(kind, ...), names)
@@ -62,7 +71,8 @@ local S = {
   gain = {}, muted = {}, soloed = {},
 }
 
-local main_clock, draw_clock
+local main_clock, draw_clock, listen_clock
+local in_key, in_amp = nil, 0       -- the engine's key tracker, polled
 local loop_gen = 0        -- bumps on each start; stale step loops exit
 local ready = false       -- params:bang done and the first track exists
 local k1, k2, k3 = false, false, false
@@ -91,23 +101,40 @@ local function tweak(k, v)
 end
 
 -- every melodic note leaves through here. part is "motif1".."motif4",
--- "pad" (notes = 4 midi) or "pedal". internal sound today; midi / crow / cc
--- outs hook in at the marked line.
+-- "pad" (notes = 4 midi) or "pedal". each part goes to the internal engine,
+-- midi, crow or any mix (outs.lua). callers have already gated by the
+-- conductor's gain and the hand mutes, so a thinned part sends nothing to
+-- midi either. vel is 0..1 and already carries the part's gain.
+local PAD_VEL = 0.55
+
+local function pad_midi(notes, g)
+  O.release("pad")
+  if g <= 0.02 or S.muted.pad then return end
+  for i = 1, 4 do O.note("pad", notes[i], nil, i, PAD_VEL * g) end
+end
+
 local function emit(part, notes, vel, dur_beats, m)
   local dur_s = (dur_beats or 0) * clock.get_beat_sec()
   if part == "pad" then
-    engine.pad(notes[1], notes[2], notes[3], notes[4])
+    local internal = O.route("pad")
+    if internal then engine.pad(notes[1], notes[2], notes[3], notes[4]) end
+    pad_midi(notes, S.gain.pad or 0)
   elseif part == "pedal" then
-    engine.pedal(notes, vel, dur_s)
+    local internal = O.route("pedal")
+    if internal then engine.pedal(notes, vel, dur_s) end
+    O.note("pedal", notes, dur_s, nil, vel)
   else
     local slot = tonumber(part:sub(6))
-    local v = params:get(part .. "_voice")
-    local voice = v == 1 and m.voice or (v - 1)
-    local bright = clamp(m.bright * (0.55 + 0.45 * S.bloom), 0, 1)
-    local send = clamp(m.send * params:get("space") / 50, 0, 1)
-    engine.note(voice, notes, vel, dur_s, m.pan, bright, send)
+    local internal = O.route("motif", slot)
+    if internal then
+      local v = params:get(part .. "_voice")
+      local voice = v == 1 and m.voice or (v - 1)
+      local bright = clamp(m.bright * (0.55 + 0.45 * S.bloom), 0, 1)
+      local send = clamp(m.send * params:get("space") / 50, 0, 1)
+      engine.note(voice, notes, vel, dur_s, m.pan, bright, send)
+    end
+    O.note("motif", notes, dur_s, slot, vel)
   end
-  -- (outs hook: midi / crow / cc for `part` go here, same arguments)
 end
 
 ------------------------------------------------------------------------
@@ -129,9 +156,10 @@ local function apply_bar()
   tweak("motif_level", params:get("motif_level"))
   tweak("pedal_level", params:get("pedal_level"))
   tweak("pad_xfade", clamp(S.bar_sec * 1.5, 2, 10))
-  tweak("bed_level", params:get("bed_level"))
-  tweak("swell_level", params:get("swell_level"))
-  tweak("moment_level", params:get("moment_level"))
+  -- the grid mutes the nature parts too
+  tweak("bed_level", S.muted.bed and 0 or params:get("bed_level"))
+  tweak("swell_level", S.muted.swell and 0 or params:get("swell_level"))
+  tweak("moment_level", S.muted.moment and 0 or params:get("moment_level"))
   tweak("nature_tone", params:get("nature_tone"))
 
   -- pad: follows the bloom's gain; re-voiced (crossfaded) when the chord moves
@@ -141,6 +169,16 @@ local function apply_bar()
   if S.chord_changed and S.playing then
     S.chord_changed = false
     emit("pad", S.chord)
+  end
+  -- a pad on midi follows the same thinning: let go when it's silenced,
+  -- come back (same chord) when it returns
+  local _, pad_to_midi = O.route("pad")
+  if pad_to_midi then
+    if S.playing and pg > 0.02 then
+      if not O.held("pad") then pad_midi(S.chord, pg) end
+    else
+      O.release("pad")
+    end
   end
 
   -- pedal: a soft low note under the chord at its gain; again when the pitch
@@ -204,6 +242,7 @@ local function play_step()
       flash(r == "next" and ("new track " .. S.seed) or T.name(S.root_pc, S.mode))
     end
     apply_bar()
+    O.bar(S, (S.track_bar - 1) % S.phrase_len == 0)
     VIS.event("bar", S)
   end
 
@@ -217,6 +256,7 @@ end
 
 local function loop(my)
   clock.sync(4)                   -- start on a bar
+  if S.playing and my == loop_gen then O.start() end
   while true do
     if not S.playing or my ~= loop_gen then return end
     play_step()
@@ -243,6 +283,7 @@ stop = function(from_loop)
   S.playing = false
   if main_clock and not from_loop then clock.cancel(main_clock) end
   main_clock = nil
+  O.stop()
   -- water and bed go quiet with the music
   engine.nature_play(1, 0, 3)
   engine.nature_play(2, 0, 2)
@@ -306,6 +347,48 @@ local function toggle_solo(k)
   S.soloed[k] = not S.soloed[k] or nil
   C.decide(S)
   flash((S.soloed[k] and "solo " or "unsolo ") .. k)
+end
+
+-- grid-only actions
+local function set_bloom(v)
+  -- pull the bloom to v now; the nudge carries it, then relaxes over bars
+  S.nudge = clamp(v - (S.bloom - (S.nudge or 0)), -0.6, 0.6)
+  S.bloom = clamp(v, 0, 1)
+  C.decide(S)
+  flash(string.format("bloom %d", math.floor(S.bloom * 100 + 0.5)))
+end
+
+local function toggle_step(slot, x)
+  if M.toggle(S.motifs[slot], x) then
+    flash("motif " .. slot .. " step " .. x)
+  else
+    flash("keep 3-7 notes + a rest")
+  end
+end
+
+local function rewrite(slot)
+  C.rewrite(S, slot)
+  flash("rewrite motif " .. slot)
+end
+
+-- listening: the engine's key tracker -> a steady key. the heard minor root
+-- is folded into the current mode (T.root_for) and taken through the hand's
+-- own instant path (the root param), never a morph
+local function listen_loop()
+  while true do
+    clock.sleep(0.25)
+    if S.listen_follow then
+      local now  = util.time()
+      local gate = 10 ^ (params:get("listen_gate") / 20)
+      L.tick(in_key, in_amp, gate, now)
+      local m = L.proposal(T.minor_of(S.root_pc, S.mode), params:get("listen_hold"), now)
+      local pc = m and T.root_for(m, S.mode)
+      if pc and pc ~= S.root_pc then
+        params:set("root", pc + 1)
+        flash("in key " .. T.name(S.root_pc, S.mode))
+      end
+    end
+  end
 end
 
 local PART_KEYS  = {"motif1", "motif2", "motif3", "motif4", "pad", "pedal"}
@@ -509,8 +592,11 @@ local function draw_hud()
 end
 
 local function draw_loop()
+  local frame = 0
   while true do
     clock.sleep(1 / 20)
+    frame = frame + 1
+    if frame % 4 == 0 then GU.redraw() end
     if not _menu.mode then
       screen.clear()
       screen.aa(0)
@@ -534,6 +620,15 @@ local function rekey()
 end
 
 local function setup_params()
+  local vport_names, vport_ids = {"none"}, {0}
+  for i = 1, #midi.vports do
+    local n = midi.vports[i].name
+    if n ~= nil and n ~= "none" and n ~= "" then
+      table.insert(vport_names, i .. ":" .. n)
+      table.insert(vport_ids, i)
+    end
+  end
+
   params:add_separator("ESTUARY")
   params:add_option("play_mode", "play mode", {"set (endless)", "track"}, 1)
   params:set_action("play_mode", function(v)
@@ -609,6 +704,18 @@ local function setup_params()
     params:add_option("motif" .. i .. "_voice", "motif " .. i .. " voice", VOICE_NAMES, 1)
   end
 
+  params:add_separator("LISTEN")
+  params:add_option("listen_on", "follow input key", {"off", "on"}, 1)
+  params:set_action("listen_on", function(v)
+    S.listen_follow = v == 2        -- the conductor holds its own key moves while true
+    L.reset()
+    engine.listen(S.listen_follow and 1 or 0)
+  end)
+  params:add_number("listen_gate", "input gate (dB)", -70, -10, -45)
+  params:add_number("listen_hold", "hold before move (s)", 2, 60, 10)
+
+  O.setup_params(vport_names, vport_ids)
+
   params:add_separator("VISUALS")
   params:add_option("theme", "theme", VIS.names, 1)
   params:set_action("theme", function(v) theme = v end)
@@ -641,6 +748,20 @@ function init()
   new_track(math.random(1, 9999), false)
   ready = true
 
+  local key_poll = poll.set("in_key", function(v) in_key = v end)
+  key_poll.time = 1 / 4
+  key_poll:start()
+  local amp_poll = poll.set("in_amp", function(v) in_amp = v end)
+  amp_poll.time = 1 / 4
+  amp_poll:start()
+  listen_clock = clock.run(listen_loop)
+
+  GU.init({
+    S = S, set_bloom = set_bloom, toggle_mute = toggle_mute, toggle_step = toggle_step,
+    rewrite = rewrite, breathe = breathe, mutate = mutate, tide = tide,
+    fresh = fresh, play = toggle_play,
+  })
+
   clock.transport.start = function() start() end
   clock.transport.stop  = function() stop() end
 
@@ -650,4 +771,5 @@ end
 function cleanup()
   stop()
   if draw_clock then clock.cancel(draw_clock) end
+  if listen_clock then clock.cancel(listen_clock) end
 end

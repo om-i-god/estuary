@@ -206,6 +206,37 @@ function M.mutate(m)
   return "swap"
 end
 
+-- flip event i between a note and a rest (the grid). refused (false) unless
+-- the motif keeps 3-7 notes, at least one rest and the pass rules, and a new
+-- note stays <= 4 beats. cycle length never changes (dur is untouched). a new
+-- note takes the nearest earlier note's tone (else the next one's) and is
+-- never a pass; a pass flipped to a rest just goes quiet.
+function M.toggle(m, i)
+  local ev = m.events
+  local e = ev[i]
+  if not e then return false end
+  local was = {tone = e.tone, pass = e.pass}
+  if sounding(e) then
+    e.tone, e.pass = nil, nil
+  else
+    if e.dur > 8 then return false end
+    local t
+    for j = i - 1, 1, -1 do if ev[j].tone then t = ev[j].tone; break end end
+    if not t then
+      for j = i + 1, #ev do if ev[j].tone then t = ev[j].tone; break end end
+    end
+    if not t then return false end
+    e.tone = t
+  end
+  local notes, rests = 0, 0
+  for _, x in ipairs(ev) do
+    if sounding(x) then notes = notes + 1 else rests = rests + 1 end
+  end
+  if notes >= 3 and notes <= 7 and rests >= 1 and passes_ok(ev) then return true end
+  e.tone, e.pass = was.tone, was.pass
+  return false
+end
+
 -- advance one 8th; returns the event (rest or note) that starts on it, else nil
 function M.step(m)
   if m.left > 0 then m.left = m.left - 1; return nil end

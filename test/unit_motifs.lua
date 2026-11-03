@@ -179,3 +179,27 @@ test("step fires each event on its onset, once per 8th", function()
   end
   assert(seen == #m.events * 3, "seen " .. seen)
 end)
+
+test("toggle keeps the shape rules and the cycle; refuses what would break them", function()
+  math.randomseed(11)
+  local took, refused = 0, 0
+  for trial = 1, 200 do
+    local m = M.new(trial % 4 + 1)
+    local cycle = m.cycle
+    for _ = 1, 40 do
+      local i = math.random(1, #m.events)
+      if M.toggle(m, i) then took = took + 1 else refused = refused + 1 end
+      check_shape(m, "toggle")
+      assert(m.cycle == cycle, "cycle moved")
+      for _, e in ipairs(m.events) do
+        if e.dur > 4 then assert(not sounding(e) or e.dur <= 8, "long note") end
+      end
+    end
+  end
+  assert(took > 0 and refused > 0, "took " .. took .. " refused " .. refused)
+  -- exactly 3 notes: a sounding step can't go
+  local m = {events = {{dur = 2, tone = 1}, {dur = 2, tone = 2}, {dur = 2, tone = 3}, {dur = 2}, {dur = 6}}, cycle = 14}
+  assert(not M.toggle(m, 1) and m.events[1].tone == 1)
+  assert(M.toggle(m, 4) and m.events[4].tone == 3 and not m.events[4].pass)
+  assert(not M.toggle(m, 5) and not m.events[5].tone, "last rest must stay")
+end)
