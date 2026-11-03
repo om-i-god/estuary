@@ -10,33 +10,33 @@ the melodies, pad and pedal can also go out over USB MIDI or crow, each one: **i
 
 ## what you hear
 
-**motifs.** four short phrases, each a handful of notes and rests with its own odd-length cycle, so they drift in and out of phase with each other. the notes come from a pentatonic-leaning set and are chosen relative to the current chord, so they always sit inside the harmony. now and then a quick neighbour tone passes between two notes. up to three motifs sound at once, and they fade in and out over several bars. the lowest free slot enters first. each motif has a voice: **rhodes**, **bell**, **sine** or **marimba** (set to **auto** and the seed picks).
+**motifs.** four short phrases, each a handful of notes and rests with its own odd-length cycle, so they drift in and out of phase with each other. each note is a step on a ladder of the current chord's own tones laid out close together (in the pentatonic modes only the ones the pentatonic allows; when that leaves fewer than four, a mode tone fills the widest gap), so a step is the next chord tone up or down, a motif stays within about an octave, and the melody always sits inside the harmony. a note held longer than a beat never sits a semitone right above a pad note. now and then a quick neighbour tone passes between two notes. up to three motifs sound at once, and they fade in and out over several bars. the four take turns: the one that has rested longest comes in next, and when the texture is full, every couple of phrases the longest-playing one makes way for one that has rested two phrases. each motif has a voice: **rhodes**, **bell**, **sine** or **marimba** (set to **auto** and the seed picks).
 
 **pad.** a four-note chord that crossfades slowly whenever the harmony moves. it opens up as the bloom rises.
 
-**pedal.** a soft low note under the chord. it enters in the middle of the bloom and holds the key's tonic through the calm sections, so the chords move above it.
+**pedal.** a soft low note under the chord. it plays in the middle and upper bloom (not at the very top) and holds the key's tonic through the calm sections, so the chords move above it. it sits at least a 4th below the pad, never a semitone (or a major 7th) from a chord note; when it can't sit clear of a chord, it rests.
 
-**bloom.** everything hangs off one slow value from 0 to 1. at the bottom, one motif and the pad are quiet in the air. as it rises a second and a third motif join, and the pedal arrives. the bloom decides who plays, how bright the notes are and how much echo and reverb they get.
+**bloom.** everything hangs off one slow value from 0 to 1. at the very bottom one motif plays alone over the bed, with no pad. as it rises the pad fades in, a second and a third motif join, and the pedal arrives. the bloom decides who plays, how bright the notes are and how much echo and reverb they get.
 
-**harmony.** one key and one mode, with chords that hold for 8 to 32 bars. every new chord is voice-led: each voice moves to the nearest note of the next chord, and every voicing is spaced so no two notes sit a semitone apart. three ways to move (PARAMS > KEY > harmony):
+**harmony.** one key and one mode, with chords that hold for 8 to 32 bars (twice that, up to 64, while the bloom is low). every new chord is voice-led: each voice moves to the nearest note of the next chord, and every voicing is spaced so no two notes sit a semitone apart. no chord ever carries a tritone or a flat 9th over its root; iii in ionian is always a plain m7. three ways to move (PARAMS > KEY > harmony):
 
 - **simple:** a pair of chords alternating.
 - **rich:** loops of two to four chords.
 - **drifting** (default): rich, plus each chord morphs into the next one voice at a time, so the in-between chords are heard too.
 
-chord voicing is set by the bloom when on **auto**: open, quartal and sus2 shapes when it is low; add9, 6/9 and rootless m9 in the middle; maj7, 6/9 and add9 at the top. or pick one shape by hand. the screen shows the chord as a roman numeral, and `IV/I` means IV over a tonic pedal.
+chord voicing is set by the bloom when on **auto**: open (5th + 9th), quartal (stacked 4ths over the chord: C becomes E A D G) and sus2 shapes when it is low; add9, 6/9 and rootless m9 in the middle; maj7, 6/9 and add9 at the top. or pick one shape by hand. the screen shows the chord as a roman numeral, and `IV/I` means IV over a tonic pedal.
 
 **modes.** six, all bright: ionian, lydian, mixolydian, major pentatonic, yoshimura (pentatonic with the 4th and 7th allowed as passing tones) and dorian. new tracks and key moves drift between them, favouring ionian, lydian and yoshimura. set the mode by hand (hold K2 + E3) to go anywhere.
 
-**water.** a swell of water comes in: a recording from the `water` folder fades up over 8 to 16 bars, holds for 4 to 8, and fades away over 8 to 16. while it is in, one motif plays, the pad and pedal soften and the tone closes a little. halfway through the fade-out the music changes once: a motif is replaced, a new chord progression starts, or the key moves. swells arrive on their own once or twice per cycle, or when you press **tide**.
+**water.** a swell of water comes in: a recording from the `water` folder fades up over 8 to 16 bars, holds for 4 to 8, and fades away over 8 to 16. while it is in, one motif plays, the pad and pedal soften and the tone closes a little. halfway through the fade-out the music changes once: the next motif due to come in is rewritten (so the first motif heard as the water leaves is new), a new chord progression starts, or the key moves. swells arrive on their own once or twice per cycle, or when you press **tide**.
 
-**moments.** a short recording from the `birds` or `wind` folder passes by, a few bars long, every few phrases. **moments** (PARAMS > NATURE) sets how often: off, rare or some.
+**moments.** a short recording from the `birds` or `wind` folder passes by, fading away within four bars, every few phrases. it never overlaps a swell. **moments** (PARAMS > NATURE) sets how often: off, rare or some.
 
 **bed.** a recording from the `room` folder (or `wind` if there is no room) loops quietly under everything while it plays, fading in over a few seconds.
 
 **two modes.**
 - **set (endless):** the bloom swells and falls over a cycle of 20 to 40 minutes, with a slow random walk on top. the screen shows `trough` or `swell`. at the bottom of the cycle the music is nearly bare.
-- **track:** a fixed arc over the track length (default 12 min): **arrival** → **bloom** → **tide** (with a water swell) → **return** → **settling**. at the end it either stops or rolls into a new track with a new seed and sometimes a new key.
+- **track:** a fixed arc over the track length (default 12 min): **arrival** → **bloom** → **tide** (with a water swell) → **return** → **settling**. the screen shows the section and how far through the track it is (`bloom 40%`). at the end it either stops or rolls into a new track with a new seed and sometimes a new key; after a stop, K2 + K3 starts that next track.
 
 the first time estuary loads it sets the norns clock to 72 bpm; after that the tempo is yours.
 
@@ -55,6 +55,8 @@ the first time estuary loads it sets the norns clock to 72 bpm; after that the t
 | **hold K1** + E1 | visual theme |
 | **hold K1** + E2 | encoder page |
 
+a tap is a quick press: hold K2 or K3 longer than about half a second, or turn an encoder while it is down, and letting go does nothing.
+
 **encoder pages**
 
 | page | E1 | E2 | E3 |
@@ -68,7 +70,7 @@ the page name shows under the chord when you're off the play page.
 
 **parts page.** a strip of every part (`1 2 3 4 P L`: the four motifs, the pad, the pedal) with the picked one underlined. here **K2** mutes / unmutes the picked part and **K3** solos it (soloed parts are boxed, and more than one can be soloed). K2 + K3 still plays / stops. a mute lands at once; the other parts keep their usual fades.
 
-**actions.** besides breathe and tide, **mutate** changes the motifs now (each sounding motif has an even chance of one change, and rarely the oldest is replaced by a new one) and **new track** starts a fresh seed and mode. all five actions are triggers in **PARAMS > PERFORM**, so you can map them to a MIDI controller (PARAMS > MAP).
+**actions.** besides breathe and tide, **mutate** changes the motifs now (each sounding motif has an even chance of one change, and rarely the oldest resting motif is replaced by a new one, heard when its turn comes) and **new track** starts a fresh seed and mode. all five actions are triggers in **PARAMS > PERFORM**, so you can map them to a MIDI controller (PARAMS > MAP).
 
 ## grid
 
@@ -130,22 +132,22 @@ estuary reads sound files from four folders under `/home/we/dust/audio/estuary/`
 | `wind/` | passing moments, and the bed if there is no `room/` |
 | `room/` | the bed: room tone, air |
 
-drop in `.wav`, `.aif`, `.aiff` or `.flac` files (mono or stereo). each swell, moment and bed picks a file at random from its folder, so more files means more variety. the folders are read when the script loads, so reload the script after adding files.
+drop in `.wav`, `.aif`, `.aiff` or `.flac` files (mono or stereo; extra channels are ignored). each file is loaded whole into memory, so keep them to 90 seconds or less. files starting with a dot (the `._` copies a Mac leaves behind) are skipped. each swell, moment and bed picks a file at random from its folder, so more files means more variety. the folders are read when the script loads, so reload the script after adding files.
 
-the repo ships placeholder recordings in `audio/`. they are CC0 field recordings from Freesound, credited one by one in `audio/SOURCES.md`, and were fetched with `tools/fetch_placeholders.sh` (needs ffmpeg). they are there to get you started; replace them with your own.
+the repo doesn't include audio. `tools/fetch_placeholders.sh` (needs ffmpeg) fetches a set of CC0 field recordings from Freesound into `audio/`; they are credited one by one in `audio/SOURCES.md`. they are there to get you started; replace them with your own.
 
 ## install
 
 copy the folder to `~/dust/code/estuary/` on norns, without `test/`, `docs/`, `tools/` and `audio/`. it ships its own engine (`lib/Engine_Estuary.sc`), so after the first install, and after any update that touches the engine, run **SYSTEM > RESTART** before loading the script.
 
-then put the recordings in place: `tools/push_audio.sh <norns-host>` copies the four folders from `audio/` to `/home/we/dust/audio/estuary/`, or copy your own files there by hand.
+then put the recordings in place: run `tools/fetch_placeholders.sh` first if `audio/` is empty, then `tools/push_audio.sh <norns-host>` copies the four folders from `audio/` to `/home/we/dust/audio/estuary/`, or copy your own files there by hand.
 
 ## dev
 
 - `lua test/unit.lua test/unit_*.lua` runs the unit tests (run from the repo root).
 - `lua test/rules_selftest.lua` checks the music-rules checker itself.
-- `lua test/sim.lua [bars] [mode 1=set 2=track] [minutes] [tempo]` runs the script headless against stubbed norns APIs, prints the arc every 100 bars, and ends with `RULES ok` or a list of rule violations (exit 1). examples: `lua test/sim.lua 2160 1` (two hours of set), `lua test/sim.lua 900 2 12` (a 12-minute track). `MUTES=1` toggles random mutes and solos each bar, `HKEY=1` makes random hand key and mode changes, `SNAP=dir` renders each visual theme to a PGM in `dir` through a small rasterizer (`test/raster.lua`).
-- `test/sc/run.sh` compiles `lib/Engine_Estuary.sc` against a stub CroneEngine, boots a local SuperCollider server, fires every command and renders a wav (needs SuperCollider.app on the Mac).
+- `lua test/sim.lua [bars] [mode 1=set 2=track] [minutes] [tempo]` runs the script headless against stubbed norns APIs, prints the arc every 100 bars, and ends with `RULES ok` or a list of rule violations (exit 1). examples: `lua test/sim.lua 2160 1` (two hours of set), `lua test/sim.lua 900 2 12` (a 12-minute track). `MUTES=1` toggles random mutes and solos each bar, `HKEY=1` makes random hand key and mode changes, `RESTART=1` sets track end to stop and restarts after each stop, `SEED=n` replays a run, `SNAP=dir` renders each visual theme to a PGM in `dir` through a small rasterizer (`test/raster.lua`).
+- `test/sc/run.sh` compiles `lib/Engine_Estuary.sc` against a stub CroneEngine, boots a local SuperCollider server, fires every command (including a nature load and play in the same tick for each slot) and renders a wav; it exits 1 if any check fails (needs SuperCollider.app on the Mac).
 
 ## license
 
