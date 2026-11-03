@@ -10,6 +10,8 @@
 --      OUTS=2       crow chord root + pedal gate instead
 --      LISTEN=1     fake KeyTrack feed (E minor, G major, silence, D minor)
 --      GRID=1       random grid presses every bar
+--      SNAP=dir     after the run, draw each theme into a real raster and write dir/<n>_<name>.pgm;
+--                   asserts each frame has >= 40 lit pixels and none repeats another
 
 local BARS    = tonumber(arg[1]) or 300
 local PMODE   = tonumber(arg[2]) or 1
@@ -231,6 +233,10 @@ util = {
   end,
 }
 _menu = {mode = false}
+-- SNAP=dir: a real raster behind the screen stub so the themes can be looked at
+local SNAP = os.getenv("SNAP")
+local RAST
+if SNAP then RAST = dofile("test/raster.lua"); screen = RAST.screen end
 
 local R = include("test/rules")
 dofile("estuary.lua")
@@ -410,6 +416,46 @@ while bars_seen < BARS do
     end
   end
 end
+
+-- visuals: every theme into the raster (overlay off), with a tide running so
+-- the swell-driven themes have something to show; each frame must carry
+-- >= 40 lit pixels and differ from every other theme's
+if SNAP then
+  assert(os.execute("mkdir -p '" .. SNAP .. "'"))
+  local names = P.defs.theme.opts
+  assert(#names == 6, "expected 6 themes, got " .. #names)
+  params:set("hud", 3)
+  key(3, 1); key(3, 0)                                    -- bring the tide in
+  local seen = {}
+  for th = 1, #names do
+    params:set("theme", th)
+    for i = 1, 48 do
+      tick_all(); steps = steps + 1
+      for _ = 1, 7 do redraw() end                        -- ~20 fps between 8ths
+    end
+    redraw()
+    local file = string.format("%s/%s.pgm", SNAP, names[th])
+    RAST.snap(file)
+    local lit = 0
+    for _, v in pairs(RAST.buf) do if v > 0 then lit = lit + 1 end end
+    local f = assert(io.open(file, "rb")); local data = f:read("a"); f:close()
+    assert(lit >= 40, names[th] .. ": only " .. lit .. " lit pixels")
+    for o, d in pairs(seen) do assert(d ~= data, names[th] .. " is identical to " .. o) end
+    seen[names[th]] = data
+    print(string.format("snap %-9s lit pixels %d", names[th], lit))
+  end
+  params:set("hud", 1)
+end
+-- the theme cycle moves on its edges
+for c = 2, 3 do
+  if S.playing then
+    params:set("vis_cycle", c)
+    local t0, moved = params:get("theme"), false
+    for i = 1, 8 * 40 do tick_all(); steps = steps + 1; if params:get("theme") ~= t0 then moved = true end end
+    assert(moved, "theme cycle " .. c .. " never moved")
+  end
+end
+params:set("vis_cycle", 1)
 
 local keys = {}
 for k in pairs(calls) do keys[#keys + 1] = k end

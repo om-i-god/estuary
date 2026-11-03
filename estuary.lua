@@ -41,13 +41,7 @@ local O   = include("lib/outs")
 local L   = include("lib/listen")
 local GU  = include("lib/gridui")
 
--- visuals arrive with lib/visuals; until then a placeholder with the same
--- interface (draw(theme, S), event(kind, ...), names)
-local VIS = {
-  names = {"still"},
-  draw = function() end,
-  event = function() end,
-}
+local VIS = include("lib/visuals")
 
 local ECHO_DIVS      = {0.5, 1, 1.5, 2}              -- in beats
 local ECHO_DIV_NAMES = {"1/8", "1/4", "3/8", "1/2"}
@@ -78,6 +72,7 @@ local ready = false       -- params:bang done and the first track exists
 local k1, k2, k3 = false, false, false
 local k2_used, k3_used = false, false
 local theme = 1
+local vis_chord, vis_state, vis_moment   -- what the visuals were last told
 local page  = 1
 local msg, msg_t = nil, 0
 local pedal_pc_last, pedal_bar = nil, -99   -- what the pedal last sounded
@@ -86,6 +81,14 @@ local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 
 local function flash(text)
   msg, msg_t = text, util.time()
+end
+
+-- VISUALS > theme cycle: a new random theme on a bar edge / phrase / track
+local function cycle_theme(edge)
+  if params:get("vis_cycle") ~= edge or #VIS.names < 2 then return end
+  local n = theme
+  while n == theme do n = math.random(#VIS.names) end
+  params:set("theme", n)
 end
 
 ------------------------------------------------------------------------
@@ -219,7 +222,7 @@ local function step_motif(i)
   local vel = (0.5 + 0.3 * m.bright) * g
   emit(k, midi, vel, dur_beats, m)
   if S.probe then S.probe(i, midi, ev, dur_beats) end
-  VIS.event("note", i, midi, vel)
+  VIS.event("note", i, midi, dur_beats * clock.get_beat_sec())
 end
 
 local function play_step()
@@ -243,7 +246,18 @@ local function play_step()
     end
     apply_bar()
     O.bar(S, (S.track_bar - 1) % S.phrase_len == 0)
+    -- the picture follows the music: chord, water, passing moments, the bar
+    if S.chord_label ~= vis_chord then vis_chord = S.chord_label; VIS.event("chord", S) end
+    if N.state ~= vis_state or N.state ~= "idle" then
+      vis_state = N.state
+      VIS.event("swell", N.state, N.level)
+    end
+    if N.moment_active and not vis_moment then VIS.event("moment", "passing") end
+    vis_moment = N.moment_active
     VIS.event("bar", S)
+    if (S.track_bar - 1) % 8 == 0 then cycle_theme(2) end
+    if (S.track_bar - 1) % S.phrase_len == 0 then cycle_theme(3) end
+    if r == "next" then cycle_theme(4) end
   end
 
   for i = 1, 4 do step_motif(i) end
@@ -591,19 +605,21 @@ local function draw_hud()
   end
 end
 
+function redraw()
+  screen.clear()
+  screen.aa(0)
+  VIS.draw(theme, S)
+  draw_hud()
+  screen.update()
+end
+
 local function draw_loop()
   local frame = 0
   while true do
     clock.sleep(1 / 20)
     frame = frame + 1
     if frame % 4 == 0 then GU.redraw() end
-    if not _menu.mode then
-      screen.clear()
-      screen.aa(0)
-      VIS.draw(theme, S)
-      draw_hud()
-      screen.update()
-    end
+    if not _menu.mode then redraw() end
   end
 end
 
@@ -719,7 +735,10 @@ local function setup_params()
   params:add_separator("VISUALS")
   params:add_option("theme", "theme", VIS.names, 1)
   params:set_action("theme", function(v) theme = v end)
+  params:add_option("vis_cycle", "theme cycle", {"off", "every 8 bars", "every phrase", "each track"}, 1)
   params:add_option("hud", "overlay", {"full", "minimal", "off"}, 1)
+  params:add_number("vis_speed",      "speed",      1, 10, 3)
+  params:add_number("vis_brightness", "brightness", 1, 15, 10)
 end
 
 -- the first time the script ever loads, settle on 72 bpm; after that the
