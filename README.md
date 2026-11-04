@@ -102,13 +102,13 @@ screen: key and mode top left with the chord below, section top right (with `~` 
 - **CROW:** four outputs, each assignable to lead pitch, lead gate, chord root, bloom (0-5V), pedal pitch or pedal gate. pitches are 1V/oct with C3 at 0V, gates 8V. **lead motif** picks which motif drives the lead outputs (0 = any), **pitch slew** adds glide, **pitch octave** shifts every pitch output
 - **CC OUT:** a midi device and channel (default 16) for the arc as CCs: bloom cc, tone cc, and a phrase pulse cc (127 on the first bar of each phrase, then 0). a cc number of 0 is off. sent once a bar, only when the value changes
 - **VISUALS:**
-  - **theme:** six quiet ones, each drawn from what the music is doing:
-    - **ripples:** each note drops a ring where its pitch is, in its motif's band; echoes follow at the echo time
-    - **horizon:** the chord voices as soft bands under a waterline that rises with a swell
-    - **postcards:** four small frames, one per motif, lighting when it plays
-    - **rain:** notes as drops sliding down from their pitch; long notes fall slowly
-    - **tide:** the last 80 bars of bloom as a shoreline; swells leave wet sand
-    - **drift:** each motif a point orbiting at its own cycle length, a line joining two when their phases line up
+  - **theme:** six quiet ones, each drawn from what the music is doing and from what the engine hears of its own output. the same water runs under all of them. a slow current flows out to sea while the bloom rises and back in while it falls, and a swell pushes it inland. sound strengthens it, the low end adds a long slow heave, and the top end scatters a few short-lived glints across the surface. the picture keeps moving gently through silence, notes ease in, and a theme change fades through black.
+    - **ripples:** each note drops a ring where its pitch is, in its motif's band. the rings drift with the current, glow softly where they cross, and stay bright while the reverb tail rings. echoes follow at the echo time. a faint surface texture rides the current and the heave.
+    - **horizon:** a layered waterline whose height and roughness follow the low end and the water sounds, rising with a swell. the chord voices are soft bands beneath it, refracted by the same wave, and the top one throws a shimmering path of light down the water. the sky brightens with the bloom, and a passing moment crosses it.
+    - **postcards:** four small windows onto the same estuary from four spots along it. each shows water and horizon, with chop from the sound. a motif's notes hang as a light in its window's sky, with their reflection on the water. an empty slot's window still shows dim water.
+    - **rain:** notes fall as drops from their pitch, long notes slowly, slanted by the wind of the current. a fine drizzle comes and goes with the top end. the ground is a water surface that heaves with the low end, and each drop rings it.
+    - **tide:** the last 80 bars of bloom as a shoreline that scrolls smoothly. at the live edge, waves wash up the sand and draw back, as far as the sound carries them, with foam glittering at their front. a swell floods the whole beach.
+    - **drift:** each motif a point circling its own eddy at its cycle length, trailing a short fade. the eddies wobble with the low end and precess with the current. a shimmering dotted line joins two points when their phases line up.
   - **theme cycle:** off / every 8 bars / every phrase / each track; jumps to a random other theme
   - **overlay:** full / minimal (key and chord only) / off (just the picture, plus held-key hints and messages)
   - **speed, brightness**
@@ -138,16 +138,16 @@ the repo doesn't include audio. `tools/fetch_placeholders.sh` (needs ffmpeg) fet
 
 ## install
 
-copy the folder to `~/dust/code/estuary/` on norns, without `test/`, `docs/`, `tools/` and `audio/`. it ships its own engine (`lib/Engine_Estuary.sc`), so after the first install, and after any update that touches the engine, run **SYSTEM > RESTART** before loading the script.
+copy the folder to `~/dust/code/estuary/` on norns, without `test/`, `docs/`, `tools/` and `audio/`. it ships its own engine (`lib/Engine_Estuary.sc`), so after the first install, and after any update that touches the engine, run **SYSTEM > RESTART** before loading the script. the visuals v2 update changed the engine (it now listens to its own output), so it needs a **SYSTEM > RESTART** too.
 
 then put the recordings in place: run `tools/fetch_placeholders.sh` first if `audio/` is empty, then `tools/push_audio.sh <norns-host>` copies the four folders from `audio/` to `/home/we/dust/audio/estuary/`, or copy your own files there by hand.
 
 ## dev
 
-- `lua test/unit.lua test/unit_*.lua` runs the unit tests (run from the repo root).
+- `lua test/unit.lua test/unit_*.lua` runs the unit tests (run from the repo root). `test/unit_visuals.lua` draws every theme through silence, a mid texture, a peak and a swell into the rasterizer, and checks how much of the screen is lit, frame-to-frame change, the draw-call budget, NaN, motion at silence, reaction to the top and low bands, and bad input. `VISREPORT=1` prints its numbers.
 - `lua test/rules_selftest.lua` checks the music-rules checker itself.
-- `lua test/sim.lua [bars] [mode 1=set 2=track] [minutes] [tempo]` runs the script headless against stubbed norns APIs, prints the arc every 100 bars, and ends with `RULES ok` or a list of rule violations (exit 1). examples: `lua test/sim.lua 2160 1` (two hours of set), `lua test/sim.lua 900 2 12` (a 12-minute track). `MUTES=1` toggles random mutes and solos each bar, `HKEY=1` makes random hand key and mode changes, `RESTART=1` sets track end to stop and restarts after each stop, `SEED=n` replays a run, `SNAP=dir` renders each visual theme to a PGM in `dir` through a small rasterizer (`test/raster.lua`).
-- `test/sc/run.sh` compiles `lib/Engine_Estuary.sc` against a stub CroneEngine, boots a local SuperCollider server, fires every command (including a nature load and play in the same tick for each slot) and renders a wav; it exits 1 if any check fails (needs SuperCollider.app on the Mac).
+- `lua test/sim.lua [bars] [mode 1=set 2=track] [minutes] [tempo]` runs the script headless against stubbed norns APIs, prints the arc every 100 bars, and ends with `RULES ok` or a list of rule violations (exit 1). examples: `lua test/sim.lua 2160 1` (two hours of set), `lua test/sim.lua 900 2 12` (a 12-minute track). `MUTES=1` toggles random mutes and solos each bar, `HKEY=1` makes random hand key and mode changes, `RESTART=1` sets track end to stop and restarts after each stop, `SEED=n` replays a run, `SNAP=dir` renders each visual theme to a PGM in `dir` through a small rasterizer (`test/raster.lua`), plus `_still` (the engine's ears silent) and `_loud` (ears pinned) versions. the sim feeds fake output polls from the music every 8th.
+- `test/sc/run.sh` compiles `lib/Engine_Estuary.sc` against a stub CroneEngine, boots a local SuperCollider server, fires every command (including a nature load and play in the same tick for each slot), checks the output polls (`out_amp` rises with a note and falls back after its tail; `nat_amp` rises with nature) and renders a wav; it exits 1 if any check fails (needs SuperCollider.app on the Mac).
 
 ## license
 
