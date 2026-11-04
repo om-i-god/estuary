@@ -9,17 +9,17 @@ T.NOTE_NAMES = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}
 -- natural minor's root to this mode's root: following an input heard as
 -- A minor puts ionian on C, lydian on F, ... the same notes either way.
 -- pentatonics use ionian `steps` so degree math stays seven-note; `melody`
--- is the pentatonic subset the motifs sing, `passing` are the Yoshimura
+-- is the pentatonic subset the motifs sing, `passing` are the
 -- neighbour tones allowed only as passing notes.
 T.MODES = {
-  {name = "ionian",           short = "ion",  rel = 3,  steps = {0, 2, 4, 5, 7, 9, 11}},
-  {name = "lydian",           short = "lyd",  rel = 8,  steps = {0, 2, 4, 6, 7, 9, 11}},
-  {name = "mixolydian",       short = "mix",  rel = 10, steps = {0, 2, 4, 5, 7, 9, 10}},
-  {name = "major pentatonic", short = "pent", rel = 3,  steps = {0, 2, 4, 5, 7, 9, 11},
+  {name = "ionian",             short = "ion",  rel = 3,  steps = {0, 2, 4, 5, 7, 9, 11}},
+  {name = "lydian",             short = "lyd",  rel = 8,  steps = {0, 2, 4, 6, 7, 9, 11}},
+  {name = "mixolydian",         short = "mix",  rel = 10, steps = {0, 2, 4, 5, 7, 9, 10}},
+  {name = "major pentatonic",   short = "pent", rel = 3,  steps = {0, 2, 4, 5, 7, 9, 11},
    melody = {0, 2, 4, 7, 9}},
-  {name = "yoshimura",        short = "yosh", rel = 3,  steps = {0, 2, 4, 5, 7, 9, 11},
+  {name = "passing pentatonic", short = "pass", rel = 3,  steps = {0, 2, 4, 5, 7, 9, 11},
    melody = {0, 2, 4, 7, 9}, passing = {5, 11}},
-  {name = "dorian",           short = "dor",  rel = 5,  steps = {0, 2, 3, 5, 7, 9, 10}},
+  {name = "dorian",             short = "dor",  rel = 5,  steps = {0, 2, 3, 5, 7, 9, 10}},
 }
 T.MODE_NAMES = {}
 for i, m in ipairs(T.MODES) do T.MODE_NAMES[i] = m.name end

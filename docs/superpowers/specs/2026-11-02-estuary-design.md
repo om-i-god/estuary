@@ -4,7 +4,7 @@
 
 ## Intent
 
-estuary plays a whole ambient set by itself, in the spirit of **Hiroshi Yoshimura**'s relaxing environmental music (*Music for Nine Postcards*, *Green*, *Air in Resort*). It uses small, singable melodies with a lot of air around them, bright consonant harmony, no drums, and the sound of water and nature woven in.
+estuary plays a whole relaxing ambient set by itself. It uses small, singable melodies with a lot of air around them, bright consonant harmony, no drums, and the sound of water and nature woven in.
 
 It's for **a set people sit and listen to**, not background for a room. So it needs a shape over time: a sparse arrival, slow blooming, a few moments that make people lean in, and a long settling.
 
@@ -13,7 +13,7 @@ The user lets it **ride mostly, with some steering similar to gradient**. Like g
 ## Goals
 
 - Endless **set mode**, plus a **track mode** of album-length pieces, both autonomous.
-- Melodies that feel like Yoshimura: short motifs, repeated with slight variation, drifting in and out of alignment with each other.
+- Calm, singable melodies: short motifs, repeated with slight variation, drifting in and out of alignment with each other.
 - **Water swell**, the signature moment: a field recording rises up under the music, the music thins and softens, then the water recedes and the music returns subtly changed.
 - The user's own **field recordings** drive the nature layer. Until they arrive, **CC0 placeholders from Freesound** fill in.
 - Every melodic part has **internal / midi / both** output, as in gradient.
@@ -37,7 +37,6 @@ The user lets it **ride mostly, with some steering similar to gradient**. Like g
 
 | topic | decision |
 |---|---|
-| reference | Hiroshi Yoshimura, relaxing works |
 | use | a set people sit and listen to |
 | hands | let it ride mostly, with gradient-like steering |
 | the "moment" | a field-recording swell, "like water coming in" |
@@ -93,7 +92,7 @@ Parts fade over about 4–8 bars, much slower than gradient.
 - **Semitone rule (Claude's call):** maj7 is always voiced **spread** (root and 7th never adjacent; the 7th sits above the root, a 9th or more away). In lydian, the #4 never sits directly next to the 5th in the chord. **Melody against chord:** a motif note a semitone above a chord tone (e.g. the 4th over I, or the root over a maj7 with the 7th on top) is an **avoid note**. It may only be a short, unaccented passing note (≤ one quarter at the current tempo) and never ends a phrase. The sim measures "passing" as ≤ 1 beat.
 
 ### Modes (pleasant only)
-**ionian, lydian, mixolydian, major pentatonic, "Yoshimura" pentatonic** (major pentatonic plus the 4th and maj7 used only as passing tones), and **dorian** as the single soft-minor option. Nothing from gradient's dark list. New tracks mostly land on ionian, lydian or the pentatonics. Key changes on water swells move up or down a 4th or 5th.
+**ionian, lydian, mixolydian, major pentatonic, passing pentatonic** (major pentatonic plus the 4th and maj7 used only as passing tones), and **dorian** as the single soft-minor option. Nothing from gradient's dark list. New tracks mostly land on ionian, lydian or the pentatonics. Key changes on water swells move up or down a 4th or 5th.
 
 ### Voices (engine)
 Four soft melodic voices, chosen per motif (auto by seed, or fixed per slot in SOUND):

@@ -1,6 +1,6 @@
 # estuary
 
-a generative ambient set for norns, in the spirit of Hiroshi Yoshimura. press play and let it ride.
+a generative ambient set for norns. press play and let it ride.
 
 estuary plays small melodies, slow bright chords, a low pedal note and a lot of air, and every so often the sound of water comes in. it runs by itself for as long as you leave it. you can steer it, but you don't have to.
 
@@ -26,7 +26,7 @@ the melodies, pad and pedal can also go out over USB MIDI or crow, each one: **i
 
 chord voicing is set by the bloom when on **auto**: open (5th + 9th), quartal (stacked 4ths over the chord: C becomes E A D G) and sus2 shapes when it is low; add9, 6/9 and rootless m9 in the middle; maj7, 6/9 and add9 at the top. or pick one shape by hand. the screen shows the chord as a roman numeral, and `IV/I` means IV over a tonic pedal.
 
-**modes.** six, all bright: ionian, lydian, mixolydian, major pentatonic, yoshimura (pentatonic with the 4th and 7th allowed as passing tones) and dorian. new tracks and key moves drift between them, favouring ionian, lydian and yoshimura. set the mode by hand (hold K2 + E3) to go anywhere.
+**modes.** six, all bright: ionian, lydian, mixolydian, major pentatonic, passing pentatonic (pentatonic with the 4th and 7th allowed as passing tones) and dorian. new tracks and key moves drift between them, favouring ionian, lydian and passing pentatonic. set the mode by hand (hold K2 + E3) to go anywhere.
 
 **water.** a swell of water comes in: a recording from the `water` folder fades up over 8 to 16 bars, holds for 4 to 8, and fades away over 8 to 16. while it is in, one motif plays, the pad and pedal soften and the tone closes a little. halfway through the fade-out the music changes once: the next motif due to come in is rewritten (so the first motif heard as the water leaves is new), a new chord progression starts, or the key moves. swells arrive on their own once or twice per cycle, or when you press **tide**.
 

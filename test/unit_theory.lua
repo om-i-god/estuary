@@ -1,7 +1,7 @@
 local T = include("lib/theory")
 
 test("modes are the six bright ones", function()
-  local want = {"ionian","lydian","mixolydian","major pentatonic","yoshimura","dorian"}
+  local want = {"ionian","lydian","mixolydian","major pentatonic","passing pentatonic","dorian"}
   assert(#T.MODES == 6, "count " .. #T.MODES)
   for i, n in ipairs(want) do assert(T.MODES[i].name == n, "mode " .. i) end
 end)
