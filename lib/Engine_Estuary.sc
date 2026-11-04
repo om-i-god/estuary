@@ -26,11 +26,16 @@
 // polls
 //   in_key  KeyTrack estimate of the audio input: 0-11 C..B major, 12-23 C..B minor
 //   in_amp  input amplitude
+//   out_amp, out_lo, out_mid, out_hi  what estuary itself sounds like, for
+//           the visuals: the master mix (reverb included, before level and
+//           limiter) overall and in three bands (< 250 Hz, 250 Hz-2.5 kHz,
+//           > 2.5 kHz), each an envelope mapped from dB to 0..1
+//   nat_amp the nature bus (all three slots after their tone), same mapping
 
 Engine_Estuary : CroneEngine {
   var voiceGroup, fxGroup;
   var mainBus, echoBus, verbBus, padBus, natBus;
-  var keyBus, inAmpBus, natAmpBus;
+  var keyBus, inAmpBus, natAmpBus, outBus, natSumBus;
   var padSynth, pedalSynth, padMixSynth, natFxSynth, echoSynth, verbSynth, masterSynth, listenSynth;
   var natBufs, natSynths, natLevels, natLoading, natPending, natGen, natOnceUse;
   var st, fx, fxMap, fxVals;
@@ -46,6 +51,11 @@ Engine_Estuary : CroneEngine {
 
   alloc {
     var s = context.server;
+    // an amplitude envelope -> 0..1 for the visuals: lo..hi dB mapped
+    // linearly, clipped (silence reads 0)
+    var toVis = { arg a, lo, hi;
+      a.max(0.00001).ampdb.linlin(lo, hi, 0, 1)
+    };
     // 0..1 -> log-scaled Hz; values above 1 are taken as Hz already
     var toHz = { arg v, lo, hi;
       var u = v.clip(0, 1);
@@ -60,6 +70,8 @@ Engine_Estuary : CroneEngine {
     keyBus    = Bus.control(s, 1);
     inAmpBus  = Bus.control(s, 1);
     natAmpBus = Bus.control(s, 3);
+    outBus    = Bus.control(s, 4);     // out_amp, out_lo, out_mid, out_hi
+    natSumBus = Bus.control(s, 1);     // nat_amp
 
     voiceGroup = Group.head(context.xg);
     fxGroup    = Group.after(voiceGroup);
@@ -198,12 +210,13 @@ Engine_Estuary : CroneEngine {
       }).add;
     };
 
-    // nature tone + sends
+    // nature tone + sends; its level goes to the nat_amp poll
     SynthDef(\est_natfx, {
-      arg in, out, verbOut, tone=0.7, verb=0.2;
+      arg in, out, verbOut, ampOut, tone=0.7, verb=0.2;
       var sig = In.ar(in, 2);
       sig = LPF.ar(sig, Lag.kr(toHz.value(tone, 800, 16000), 0.3));
       sig = HPF.ar(sig, 40) * 0.5;
+      Out.kr(ampOut, toVis.value(Amplitude.kr(sig.sum * 0.5, 0.05, 0.4), -66, -18));
       Out.ar(out, sig);
       Out.ar(verbOut, sig * verb);
     }).add;
@@ -242,12 +255,26 @@ Engine_Estuary : CroneEngine {
       Out.ar(out, sig * level);
     }).add;
 
-    // master: tone, level, limiter at -1 dBFS (no saturation)
+    // master: tone, level, limiter at -1 dBFS (no saturation).
+    // the visuals listen here, after the reverb (tails count) and before
+    // level and limiter: three cheap 2-pole filters and four Amplitude
+    // followers on the mono sum, no FFT
     SynthDef(\est_master, {
-      arg in, out, level=0.9, tone=0.75;
+      arg in, out, ampOut, level=0.9, tone=0.75;
       var sig = In.ar(in, 2);
+      var mono, lo, mid, hi;
       sig = HPF.ar(sig, 25);
       sig = LPF.ar(sig, Lag.kr(toHz.value(tone, 2500, 16000), 0.3));
+      mono = (sig[0] + sig[1]) * 0.5;
+      lo  = LPF.ar(mono, 250);
+      mid = LPF.ar(HPF.ar(mono, 250), 2500);
+      hi  = HPF.ar(mono, 2500);
+      Out.kr(ampOut, [
+        toVis.value(Amplitude.kr(mono, 0.05, 0.4), -64, -12),
+        toVis.value(Amplitude.kr(lo, 0.05, 0.4), -66, -14),
+        toVis.value(Amplitude.kr(mid, 0.05, 0.4), -68, -16),
+        toVis.value(Amplitude.kr(hi, 0.05, 0.4), -76, -26)
+      ]);
       sig = Limiter.ar(sig * level, 0.89, 0.01);
       Out.ar(out, sig);
     }).add;
@@ -268,7 +295,8 @@ Engine_Estuary : CroneEngine {
       \echoOut, echoBus.index, \verbOut, verbBus.index
     ], fxGroup, \addToTail);
     natFxSynth = Synth(\est_natfx, [
-      \in, natBus.index, \out, mainBus.index, \verbOut, verbBus.index
+      \in, natBus.index, \out, mainBus.index, \verbOut, verbBus.index,
+      \ampOut, natSumBus.index
     ], fxGroup, \addToTail);
     echoSynth = Synth(\est_echo, [
       \in, echoBus.index, \out, mainBus.index, \verbOut, verbBus.index
@@ -282,7 +310,7 @@ Engine_Estuary : CroneEngine {
     ], fxGroup, \addToHead);
     listenSynth.run(false);
     masterSynth = Synth(\est_master, [
-      \in, mainBus.index, \out, context.out_b.index
+      \in, mainBus.index, \out, context.out_b.index, \ampOut, outBus.index
     ], fxGroup, \addToTail);
 
     // persistent synths by name; nature synths are registered as they appear
@@ -421,6 +449,11 @@ Engine_Estuary : CroneEngine {
 
     this.addPoll(\in_key, { keyBus.getSynchronous });
     this.addPoll(\in_amp, { inAmpBus.getSynchronous });
+    // the visuals' ears (see est_master / est_natfx)
+    [\out_amp, \out_lo, \out_mid, \out_hi].do { |name, i|
+      this.addPoll(name, { outBus.getnSynchronous(4)[i] });
+    };
+    this.addPoll(\nat_amp, { natSumBus.getSynchronous });
 
     this.addCommand(\tweak, "sf", { |msg|
       var key = msg[1].asSymbol;
@@ -502,6 +535,8 @@ Engine_Estuary : CroneEngine {
     keyBus.free;
     inAmpBus.free;
     natAmpBus.free;
+    outBus.free;
+    natSumBus.free;
     natBufs.do { |b| if(b.notNil, { b.free }) };
   }
 }
