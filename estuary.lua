@@ -852,8 +852,8 @@ function init()
   -- bands, and the nature level (an engine from before these polls, not yet
   -- restarted, has none: the visuals then run on the music alone)
   for _, name in ipairs({"out_amp", "out_lo", "out_mid", "out_hi", "nat_amp"}) do
-    local p = poll.set(name, function(v) VIS.audio(name, v) end)
-    if p then
+    local ok, p = pcall(poll.set, name, function(v) VIS.audio(name, v) end)
+    if ok and p then
       p.time = 1 / 15
       p:start()
     end

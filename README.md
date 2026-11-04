@@ -138,7 +138,7 @@ the repo doesn't include audio. `tools/fetch_placeholders.sh` (needs ffmpeg) fet
 
 ## install
 
-copy the folder to `~/dust/code/estuary/` on norns, without `test/`, `docs/`, `tools/` and `audio/`. it ships its own engine (`lib/Engine_Estuary.sc`), so after the first install, and after any update that touches the engine, run **SYSTEM > RESTART** before loading the script. the visuals v2 update changed the engine (it now listens to its own output), so it needs a **SYSTEM > RESTART** too.
+copy the folder to `~/dust/code/estuary/` on norns, without `test/`, `docs/`, `tools/` and `audio/`. it ships its own engine (`lib/Engine_Estuary.sc`), so after the first install, and after any update that touches the engine, run **SYSTEM > RESTART** before loading the script.
 
 then put the recordings in place: run `tools/fetch_placeholders.sh` first if `audio/` is empty, then `tools/push_audio.sh <norns-host>` copies the four folders from `audio/` to `/home/we/dust/audio/estuary/`, or copy your own files there by hand.
 
