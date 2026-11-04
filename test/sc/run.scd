@@ -18,7 +18,9 @@ s.waitForBoot {
       if(eng.commands[c].isNil, { ("ERROR missing command " ++ c).postln }, { n = n + 1 });
     };
     eng.polls.keysValuesDo { |k, f| n = n + 0 };
-    if(eng.polls[\in_key].isNil or: { eng.polls[\in_amp].isNil }, { "ERROR missing poll".postln });
+    [\in_key, \in_amp, \out_amp, \out_lo, \out_mid, \out_hi, \nat_amp].do { |p|
+      if(eng.polls[p].isNil, { ("ERROR missing poll " ++ p).postln });
+    };
     s.recHeaderFormat = "wav"; s.recSampleFormat = "float";
     s.record(out, numChannels: 2);
     0.3.wait;
@@ -28,12 +30,38 @@ s.waitForBoot {
      \motif_level, 1.0, \pad_level, 1.0, \pad_xfade, 3.0, \pedal_level, 1.0,
      \bed_level, 1.0, \swell_level, 1.0, \moment_level, 1.0, \nature_tone, 0.6
     ].clump(2).do { |kv| eng.cmd(\tweak, kv[0].asString, kv[1]) };
+    // the visuals' ears: out_amp rises while a note sounds and falls back
+    // after its tail; every band is printed (they map dB to 0..1)
+    ~ears = { |tag|
+      var v = [\out_amp, \out_lo, \out_mid, \out_hi, \nat_amp].collect { |p| eng.polls[p].value };
+      ("EARS " ++ tag ++ " amp/lo/mid/hi/nat " ++ v.collect(_.round(0.01))).postln;
+      v
+    };
+    ~before = ~ears.("before")[0];
+    eng.cmd(\note, 1, 60, 0.7, 1.5, 0, 0.5, 0.5);
+    eng.cmd(\pedal, 36, 0.5, 1.5);
+    0.6.wait;
+    ~during = ~ears.("during")[0];
+    eng.cmd(\pedal, 0, 0, 0);
+    [1.5, 1.5, 1.5, 1.5, 2].do { |w, i| w.wait; ~ears.("after" ++ i) };
+    ~after = eng.polls[\out_amp].value;
+    ("CHECK out_amp before " ++ ~before.round(0.001) ++ " during " ++ ~during.round(0.001)
+      ++ (if((~during > (~before + 0.25)), { " rising" }, { " NOT-RISING" }))).postln;
+    ("CHECK out_amp after " ++ ~after.round(0.001)
+      ++ (if(~after < (~during * 0.5), { " falling" }, { " NOT-FALLING" }))).postln;
+    // a bell for the top band
+    eng.cmd(\note, 2, 84, 0.8, 1, 0, 0.9, 0.3);
+    0.3.wait;
+    ~ears.("bell");
+    3.wait;
     // load + play in the same tick, as the script sends them: every slot
     // must be heard (the play waits for the async load)
     eng.cmd(\nature_load, 1, fix ++ "room.wav");  eng.cmd(\nature_play, 1, 0.6, 0.5);
     eng.cmd(\nature_load, 2, fix ++ "water.wav"); eng.cmd(\nature_play, 2, 0.8, 0.5);
     eng.cmd(\nature_load, 3, fix ++ "water.wav"); eng.cmd(\nature_play, 3, 0.8, 0.5);
     3.wait;
+    ~nat = ~ears.("nature")[4];
+    ("CHECK nat_amp " ++ ~nat.round(0.001) ++ (if(~nat > 0.1, { " rising" }, { " NOT-RISING" }))).postln;
     [1, 2, 3].do { |k|
       var a = eng.natAmp(k);
       ("CHECK same-tick slot" ++ k ++ " " ++ a.round(0.0001)
