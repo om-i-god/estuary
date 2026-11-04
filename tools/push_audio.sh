@@ -6,5 +6,7 @@ set -eu
 HOST=$1
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT/audio"
-ssh "we@$HOST" "mkdir -p /home/we/dust/audio/estuary"
-rsync -av -e "ssh" water birds wind room "we@$HOST:/home/we/dust/audio/estuary/"
+# NORNS_SSH_KEY=<path> to use a specific key
+SSH="ssh${NORNS_SSH_KEY:+ -i $NORNS_SSH_KEY}"
+$SSH "we@$HOST" "mkdir -p /home/we/dust/audio/estuary"
+rsync -av -e "$SSH" water birds wind room "we@$HOST:/home/we/dust/audio/estuary/"
