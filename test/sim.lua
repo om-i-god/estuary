@@ -11,8 +11,12 @@
 --      LISTEN=1     fake KeyTrack feed (E minor, G major, silence, D minor)
 --      GRID=1       random grid presses every bar
 --      RESTART=1    track end = stop; K2+K3 after each stop must play a whole new track
---      SNAP=dir     after the run, draw each theme into a real raster and write dir/<n>_<name>.pgm;
---                   asserts each frame has >= 40 lit pixels and none repeats another
+--      SNAP=dir     after the run, draw each theme into a real raster and write dir/<name>.pgm;
+--                   asserts each frame has >= 40 lit pixels and none repeats another. also
+--                   <name>_still.pgm (the engine's ears silent: never blank) and
+--                   <name>_loud.pgm (ears pinned at 1: <= 35% of the screen lit)
+-- the engine's output polls (out_amp/lo/mid/hi, nat_amp) are fed every 8th
+-- from the music's state, so the visuals always see some ears
 
 local BARS    = tonumber(arg[1]) or 300
 local PMODE   = tonumber(arg[2]) or 1
@@ -357,8 +361,24 @@ end
 -- drive: resume every live thread once per 8th. the step clock waits a bar
 -- then ticks; note-off / draw threads come and go.
 PEAK_THREADS = 0
+-- fake ears: a level from what is sounding, the low band from pad + pedal,
+-- the top from the bloom, nature from the swell. EARS = n pins them all
+EARS = nil
+local function ears()
+  if not polls.out_amp then return end
+  local function g(k) return S.playing and (S.gain[k] or 0) or 0 end
+  local m = (g("motif1") + g("motif2") + g("motif3") + g("motif4")) / 4
+  local v = {
+    out_amp = 0.2 + 0.5 * m + 0.2 * g("pad"), out_lo = 0.3 * g("pad") + 0.4 * g("pedal"),
+    out_mid = 0.6 * m, out_hi = 0.4 * m * (S.bloom or 0), nat_amp = S.nature_state ~= "idle" and 0.7 or 0.1,
+  }
+  for k, x in pairs(v) do
+    if polls[k] then polls[k](EARS or (S.playing and x + (math.random() - 0.5) * 0.05 or 0)) end
+  end
+end
 local function tick_all()
   VT = VT + 60 / TEMPO / 2
+  ears()
   if LISTEN and polls.in_key then
     local k, a = feed(S.track_bar)
     if math.random() < 0.15 then k = math.random(0, 23) end    -- tracker noise
@@ -500,7 +520,21 @@ if SNAP then
     assert(lit >= 40, names[th] .. ": only " .. lit .. " lit pixels")
     for o, d in pairs(seen) do assert(d ~= data, names[th] .. " is identical to " .. o) end
     seen[names[th]] = data
-    print(string.format("snap %-9s lit pixels %d", names[th], lit))
+    -- the same theme with the ears silent, then pinned: never blank, never
+    -- more than ~35% of the screen
+    local counts = {}
+    for _, e in ipairs({{"still", 0}, {"loud", 1}}) do
+      EARS = e[2]
+      for i = 1, 12 do tick_all(); steps = steps + 1; for k = 1, 8 do redraw() end end
+      local c = 0
+      for y = 0, 63 do for x = 0, 127 do if (RAST.buf[y * 128 + x] or 0) > 0 then c = c + 1 end end end
+      RAST.snap(string.format("%s/%s_%s.pgm", SNAP, names[th], e[1]))
+      counts[e[1]] = c
+    end
+    EARS = nil
+    assert(counts.still >= 40, names[th] .. ": only " .. counts.still .. " lit pixels with the ears silent")
+    assert(counts.loud <= 0.35 * 8192, names[th] .. ": " .. counts.loud .. " lit pixels with the ears pinned")
+    print(string.format("snap %-9s lit pixels %d  (ears silent %d, pinned %d)", names[th], lit, counts.still, counts.loud))
   end
   params:set("hud", 1)
 end

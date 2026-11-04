@@ -848,6 +848,16 @@ function init()
   local amp_poll = poll.set("in_amp", function(v) in_amp = v end)
   amp_poll.time = 1 / 4
   amp_poll:start()
+  -- the engine's ears for the visuals: its own output, overall and in three
+  -- bands, and the nature level (an engine from before these polls, not yet
+  -- restarted, has none: the visuals then run on the music alone)
+  for _, name in ipairs({"out_amp", "out_lo", "out_mid", "out_hi", "nat_amp"}) do
+    local p = poll.set(name, function(v) VIS.audio(name, v) end)
+    if p then
+      p.time = 1 / 15
+      p:start()
+    end
+  end
   listen_clock = clock.run(listen_loop)
 
   GU.init({
