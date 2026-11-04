@@ -22,3 +22,13 @@ Built 2026-11-03. These are open items left after the final review.
   - set_bloom clamp
   - grid columns 15 and up
   - harmony morph double-step
+
+## Visuals v2
+- On the device:
+  - Tune the 5 analysis gain constants in the engine so the visuals' 0..1 levels track the real output.
+  - Check CPU, tide especially.
+  - Below brightness 5, the faintest textures round to black.
+- Tests:
+  - Tighten the continuity bound (DIFF_MAX 0.5 against an observed max of about 0.25) and the minimum lit ratio for non-silent scenes.
+  - Add a variable-dt run for frame-rate independence, and a speed-param test.
+  - Assert that out-of-range audio behaves like the clamped value.
