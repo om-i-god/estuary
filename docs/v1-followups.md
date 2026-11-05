@@ -32,3 +32,13 @@ Built 2026-11-03. These are open items left after the final review.
   - Tighten the continuity bound (DIFF_MAX 0.5 against an observed max of about 0.25) and the minimum lit ratio for non-silent scenes.
   - Add a variable-dt run for frame-rate independence, and a speed-param test.
   - Assert that out-of-range audio behaves like the clamped value.
+
+## Visuals v3
+Built 2026-11-04: twelve themes, each in `lib/vis/<name>.lua`. The v2 test follow-ups above are done: a jittery-dt run, a speed-param test, out-of-range audio drawing exactly as the clamped value, the continuity bound tightened to 0.35 and a 4% lit floor for any scene with music.
+- On the device:
+  - CPU per theme, and whether `include` of twelve files at load is quick enough. The heaviest by draw calls are tide (peak) and kelp; reeds is the heaviest at rest.
+  - The dim levels carry the atmosphere now (sky glows, far shores, fog). Check they still read below brightness 5, where level 1 rounds to black, and that the dithered skies don't shimmer or band on the real panel.
+  - Whether the scanline skies read as skies at arm's length, and whether the silhouettes (tree lines, headland, reeds) are clear enough at the default brightness.
+  - flock: that the boids settle into a calm flock on the real frame rate, not a jittery one.
+  - mist: that the fog density follows the tuned out_lo / nat_amp gains (it was tuned against the sim's fake polls).
+  - The theme name on the screen with K1 held: the longest is "fireflies 10/12".
