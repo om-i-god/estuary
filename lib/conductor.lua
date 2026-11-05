@@ -8,6 +8,7 @@ local T = include("lib/theory")
 local H = include("lib/harmony")
 local M = include("lib/motifs")
 local N = include("lib/nature")
+local PAL = include("lib/palettes")
 
 local C = {}
 C.N = N
@@ -129,6 +130,7 @@ end
 function C.new_track(S, seed, move_key)
   math.randomseed(seed)
   S.seed = seed
+  PAL.for_track(S, seed)          -- leaves math.random alone
   S.gain, S.muted, S.soloed = {}, S.muted or {}, S.soloed or {}
   if move_key and not S.listen_follow then
     S.root_pc = (S.root_pc + pick({0, 5, 7, -5, 3})) % 12
