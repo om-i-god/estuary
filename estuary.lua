@@ -798,8 +798,7 @@ local function setup_params()
   -- auto: each new track picks a palette (never the last one again)
   params:add_option("palette", "palette", PALETTE_NAMES, 1)
   params:set_action("palette", function(v)
-    S.palette_pin = v - 1
-    if v > 1 then S.palette = v - 1 end   -- now: next notes, next pad voicing
+    PAL.pin(S, v)                    -- now: next notes, next pad voicing
   end)
   params:add_option("pad_sound", "pad sound", PAD_NAMES, 1)
   for i = 1, 4 do

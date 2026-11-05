@@ -67,10 +67,11 @@ Engine_Estuary : CroneEngine {
       var u = v.clip(0, 1);
       Select.kr(v > 1, [u.linexp(0, 1, lo, hi), v.clip(lo, hi)])
     };
-    // a motif voice's way out: mono -> Pan2; [l, r] -> Balance2 at Pan2's
-    // centre gain; then the dry bus and the two sends
+    // a motif voice's way out: mono -> Pan2; [l, r] -> Balance2 (both are
+    // equal-power, 0.707 per side at the centre); then the dry bus and the
+    // two sends
     var vout = { arg sig, pan, out, echoOut, verbOut, echo, verb;
-      var o = if(sig.isArray, { Balance2.ar(sig[0], sig[1], pan) * 0.7071 }, { Pan2.ar(sig, pan) });
+      var o = if(sig.isArray, { Balance2.ar(sig[0], sig[1], pan) }, { Pan2.ar(sig, pan) });
       Out.ar(out, o);
       Out.ar(echoOut, o * echo);
       Out.ar(verbOut, o * verb);
@@ -115,7 +116,8 @@ Engine_Estuary : CroneEngine {
     // level param never changes the tone. Each voice ends in vout. A GAIN
     // constant per voice keeps them within 3 dB RMS of each other at equal
     // vel and bright (test/sc/sounds.scd measures it). No onset is faster than
-    // 3.5 ms, and nothing saturates. ks shortens decays on high notes.
+    // 4 ms (5 ms on the mallets), and nothing saturates. ks shortens decays
+    // on high notes.
 
     // electric piano, the DX "E.PIANO 1" family: a body pair (1:1, index
     // falls with time) plus a tine pair (1:14, a short bright ping), both
@@ -132,13 +134,15 @@ Engine_Estuary : CroneEngine {
       var env  = EnvGen.ar(Env([0, 1, 0.55, 0], [0.004, (dur * 0.8), (((dur * 0.4) + 1.1) * ks)], [\sin, -3, -4]), doneAction: 2);
       var tr   = SinOsc.kr(Rand(4.0, 4.6), Rand(0, 2pi)) * (0.05 + (0.04 * bright));
       var sig  = (body * 0.75) + ((tine * 0.4) * tEnv);
-      sig = LPF.ar(sig, (2400 + (bright * 5200))) * env * amp * 1.46;
+      sig = LPF.ar(sig, (2400 + (bright * 5200))) * env * amp * 1.03;
       vout.value([sig * (1 + tr), sig * (1 - tr)], pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
     // glassy DX/TX bell: 1:3.5 FM with a long tail, an inharmonic strike
     // partial (2.76) that fades in under a second, and a partner a fraction
-    // of a hertz away on the stereo side only (a slow turn, no mono beat)
+    // of a hertz away added to the left and subtracted from the right: each
+    // side beats slowly, opposite in phase, so the tail turns gently between
+    // the speakers (the partner cancels in a mono sum)
     SynthDef(\est_bell, {
       arg out, echoOut, verbOut, freq=523, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
       var hard = ((vel * 0.4) + (bright * 0.8)) * Rand(0.9, 1.1);
@@ -148,9 +152,9 @@ Engine_Estuary : CroneEngine {
       var c3   = SinOsc.ar(freq + Rand(0.25, 0.6), Rand(0, 2pi)) * 0.3;
       var env  = EnvGen.kr(Env([0, 1, 0], [0.006, (dur + 3.2)], [\sin, -5]), doneAction: 2);
       var cut  = 3500 + (bright * 6000);
-      var mid  = LPF.ar(c1 + c2, cut) * env * amp * 1.32;
-      var side = LPF.ar(c3, cut) * env * amp * 1.32;
-      vout.value([mid + side, mid - side], pan, out, echoOut, verbOut, echo, verb);
+      var mid  = c1 + c2;
+      var sig  = LPF.ar([mid + c3, mid - c3], cut) * (env * amp * 0.93);
+      vout.value(sig, pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
     // pure sine with a breathy onset (a puff of band-passed noise) and a
@@ -174,12 +178,12 @@ Engine_Estuary : CroneEngine {
       arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
       var ks  = (freq / 261).clip(0.25, 8).pow(-0.5);
       var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
-      var atk = (0.0055 - (h * 0.002)).max(0.0035);
-      var m1  = SinOsc.ar(freq) * EnvGen.ar(Env([0, 1, 0], [atk, (1.3 * ks)], [\sin, -5]), doneAction: 2);
-      var m2  = SinOsc.ar((freq * 3.99).min(16000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.32 * ks)], [\sin, -5])) * (0.05 + (0.15 * h));
-      var m3  = SinOsc.ar((freq * 9.9).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.08], [\sin, -5])) * (0.01 + (0.04 * h));
-      var th  = LPF.ar(WhiteNoise.ar, (freq * 1.5).min(4000)) * EnvGen.kr(Env([0, 1, 0], [0.004, 0.03], [\sin, -4])) * 0.2;
-      var sig = (m1 + m2 + m3 + th) * amp * 2.0;
+      var atk = (0.007 - (h * 0.002)).max(0.005);
+      var m1  = SinOsc.ar(freq) * EnvGen.ar(Env([0, 1, 0], [atk, (1.6 * ks)], [\sin, -4]), doneAction: 2);
+      var m2  = SinOsc.ar((freq * 3.99).min(16000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.32 * ks)], [\sin, -5])) * (0.04 + (0.12 * h));
+      var m3  = SinOsc.ar((freq * 9.9).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.08], [\sin, -5])) * (0.008 + (0.03 * h));
+      var th  = LPF.ar(WhiteNoise.ar, (freq * 1.5).min(4000)) * EnvGen.kr(Env([0, 1, 0], [0.005, 0.03], [\sin, -4])) * 0.15;
+      var sig = (m1 + m2 + m3 + th) * amp * 1.64;
       vout.value(sig, pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
@@ -190,14 +194,14 @@ Engine_Estuary : CroneEngine {
       arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
       var ks   = (freq / 261).clip(0.25, 8).pow(-0.45);
       var h    = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
-      var atk  = (0.006 - (h * 0.002)).max(0.0035);
+      var atk  = (0.0065 - (h * 0.0015)).max(0.005);
       var trem = SinOsc.kr(Rand(3.4, 4.0), [0, 0.5pi] + Rand(0, 2pi)) * 0.22;
       var m1   = SinOsc.ar(freq) * EnvGen.ar(Env([0, 1, 0], [atk, (3.2 * ks)], [\sin, -4]));
       var m2   = SinOsc.ar((freq * 4).min(16000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.7 * ks)], [\sin, -5])) * (0.05 + (0.16 * h));
       var m3   = SinOsc.ar((freq * 10).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.12], [\sin, -5])) * (0.01 + (0.035 * h));
       var damp = EnvGen.kr(Env([1, 1, 0], [((dur + 1.0).min(3.3 * ks)), 0.8], [0, -3]), doneAction: 2);
       var up   = m2 + m3;
-      var g    = damp * amp * 1.64;
+      var g    = damp * amp * 1.16;
       vout.value([((m1 * (1 + trem[0])) + up) * g, ((m1 * (1 + trem[1])) + up) * g], pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
@@ -207,12 +211,12 @@ Engine_Estuary : CroneEngine {
       arg out, echoOut, verbOut, freq=523, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
       var ks  = (freq / 261).clip(0.25, 8).pow(-0.4);
       var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
-      var atk = 0.0035;
-      var m1  = SinOsc.ar(freq) * EnvGen.ar(Env([0, 1, 0], [atk, (1.5 * ks)], [\sin, -5]), doneAction: 2);
+      var atk = 0.005;
+      var m1  = SinOsc.ar(freq) * EnvGen.ar(Env([0, 1, 0], [atk, (1.8 * ks)], [\sin, -4]), doneAction: 2);
       var m0  = SinOsc.ar((freq * 2).min(16000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.6 * ks)], [\sin, -5])) * 0.22;
       var m2  = SinOsc.ar((freq * 4).min(16000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.3 * ks)], [\sin, -5])) * (0.04 + (0.12 * h));
-      var m3  = SinOsc.ar((freq * 9).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.05], [\sin, -5])) * (0.015 + (0.04 * h));
-      var sig = (m1 + m0 + m2 + m3) * amp * 1.82;
+      var m3  = SinOsc.ar((freq * 9).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.05], [\sin, -5])) * (0.01 + (0.03 * h));
+      var sig = (m1 + m0 + m2 + m3) * amp * 1.51;
       vout.value(sig, pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
@@ -222,11 +226,11 @@ Engine_Estuary : CroneEngine {
       arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
       var ks  = (freq / 261).clip(0.25, 8).pow(-0.5);
       var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
-      var atk = 0.0035;
+      var atk = 0.005;
       var bi  = EnvGen.kr(Env([(0.2 + (0.6 * h)), 0], [0.08], [-3]));
-      var m1  = SinOsc.ar(freq, SinOsc.ar(freq, 0, bi)) * EnvGen.ar(Env([0, 1, 0], [atk, (1.1 * ks)], [\sin, -5]), doneAction: 2);
-      var m2  = SinOsc.ar((freq * 5.93).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.14 * ks)], [\sin, -4])) * (0.06 + (0.18 * h));
-      var g   = amp * 3.11;
+      var m1  = SinOsc.ar(freq, SinOsc.ar(freq, 0, bi)) * EnvGen.ar(Env([0, 1, 0], [atk, (1.4 * ks)], [\sin, -4]), doneAction: 2);
+      var m2  = SinOsc.ar((freq * 5.93).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.14 * ks)], [\sin, -4])) * (0.05 + (0.15 * h));
+      var g   = amp * 1.75;
       vout.value([(m1 + (m2 * 1.3)) * g, (m1 + (m2 * 0.7)) * g], pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
@@ -254,7 +258,7 @@ Engine_Estuary : CroneEngine {
       var sh   = SinOsc.kr(Rand(0.6, 0.9), [0, pi]) * 0.05;
       var core = SinOsc.ar(freq) + (SinOsc.ar(freq * 2) * (0.06 + (0.1 * bright))) + (SinOsc.ar((freq * 3).min(16000)) * (0.02 + (0.05 * bright)));
       var shine = SinOsc.ar((freq * 4).min(16000)) * EnvGen.kr(Env([0, 1], [(0.5 + atk)])) * (0.03 * (0.5 + bright));
-      var sig  = (core + shine) * env * amp * 0.77;
+      var sig  = (core + shine) * env * amp * 0.545;
       vout.value([sig * (1 + sh[0]), sig * (1 + sh[1])], pan, out, echoOut, verbOut, echo, verb);
     }).add;
 

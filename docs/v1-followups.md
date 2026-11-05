@@ -35,8 +35,8 @@ Built 2026-11-03. These are open items left after the final review.
 
 ## Sounds v2: on-device listening checks
 Engine change: run SYSTEM > RESTART once before loading. The Mac checks (`test/sc/run.sh`) measure every voice and pad character alone and render one demo per palette; these are what only the device and ears can settle.
-- Balance by ear: RMS matching is within 1 dB on the Mac, but the percussive voices (marimba, kalimba, celesta) peak about 10 dB above the sustained ones (flute, glass, sine). Listen for mallets poking out of the mix, or flute and glass sinking under the pad. Tune the per-voice GAIN constants in `lib/Engine_Estuary.sc`, then re-run `test/sc/run.sh` (it fails past 3 dB).
-- Pads: the five characters sit within about 1.2 dB RMS. Strings and air peak a few dB higher than warm. Check that they don't swallow the motifs at high bloom, and check the air pad's breath at low chords.
+- Balance by ear: RMS matching is within about 0.6 dB on the Mac, but the percussive voices (marimba, kalimba, celesta) still peak about 9-11 dB above the sustained ones (flute, glass), even with their softened mallets (5 ms onsets, longer and rounder decays). Listen for mallets poking out of the mix, or flute and glass sinking under the pad. Tune the per-voice GAIN constants in `lib/Engine_Estuary.sc`, then re-run `test/sc/run.sh` (it fails past 3 dB).
+- Pads: the five characters sit within about 2 dB RMS (it varies by a few tenths between runs, from their slow random drift). Strings and air peak a few dB higher than warm. Check that they don't swallow the motifs at high bloom, and check the air pad's breath at low chords.
 - CPU: Mac NRT timings put the motif voices at about 0.8-1.3x the cost of the v1 marimba, and the pads at or under the v1 pad. Check the norns CPU readout on a busy stretch (three motifs, a pad crossfade, pedal, a swell) with each palette, especially shallows, mist and glasshouse.
 - Voices that may sound off:
   - the rhodes tine ping at high bright on the top notes (glassy or harsh?)

@@ -103,7 +103,7 @@ if(palettes.size < 6, { fail.("fewer than 6 palettes") });
     var r = res[i];
     if(r[2], { fail.("NaN in " ++ k) });
     if(r[1] >= 1.0, { fail.("clipping in " ++ k ++ " peak " ++ r[1]) });
-    if(r[3] > 0.3, { fail.("hard onset in " ++ k ++ ": " ++ r[3].round(0.01) ++ " of peak in the first ms") });
+    if(r[3] > 0.2, { fail.("hard onset in " ++ k ++ ": " ++ r[3].round(0.01) ++ " of peak in the first ms") });
     table[[k[0], k[1]]] = (table[[k[0], k[1]]] ? []) ++ [r];
   };
   "CHECK voice RMS dB (mean of midi 60/67/74; peak dBFS at bright 0.5)".postln;

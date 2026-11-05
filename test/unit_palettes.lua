@@ -131,6 +131,20 @@ test("palettes: a pinned palette is honoured on every new track", function()
   assert(P.for_track(S, 301) ~= 4, "auto after a pin repeated it")
 end)
 
+test("palettes: back to auto after a pin, a rebuild picks afresh", function()
+  local S = {}
+  P.pin(S, 1 + 4)                  -- pin palette 4
+  eq(P.for_track(S, 500), 4, "pinned")
+  eq(P.for_track(S, 500), 4, "pinned rebuild")
+  P.pin(S, 1)                      -- auto
+  assert(P.for_track(S, 500) ~= 4, "rebuild after unpinning kept the pinned palette")
+  local a = S.palette
+  eq(P.for_track(S, 500), a, "a later rebuild keeps the auto pick")
+  -- pinning applies at once
+  P.pin(S, 1 + 2)
+  eq(S.palette, 2, "pin is immediate")
+end)
+
 test("palettes: the conductor picks one per new track", function()
   _path = {audio = "/audio/"}
   util = {scandir = function() return {} end}

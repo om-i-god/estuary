@@ -66,6 +66,15 @@ function P.for_track(S, seed)
   return S.palette
 end
 
+-- the palette param (1 auto, then PALETTES): pin one now, or go back to
+-- auto. either way the next rebuild picks afresh (a palette chosen under a
+-- pin is not that seed's own)
+function P.pin(S, v)
+  S.palette_pin = v - 1
+  if v > 1 then S.palette = v - 1 end
+  S.palette_seed = nil
+end
+
 -- the `motifN voice` param (1 auto, then VOICES) -> engine voice index
 function P.motif_voice(v, palette, slot)
   if v and v > 1 then return v - 1 end
