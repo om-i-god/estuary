@@ -40,12 +40,16 @@ local N   = C.N                  -- the conductor's nature module (it has state)
 local O   = include("lib/outs")
 local L   = include("lib/listen")
 local GU  = include("lib/gridui")
+local PAL = include("lib/palettes")
 
 local VIS = include("lib/visuals")
 
 local ECHO_DIVS      = {0.5, 1, 1.5, 2}              -- in beats
 local ECHO_DIV_NAMES = {"1/8", "1/4", "3/8", "1/2"}
-local VOICE_NAMES    = {"auto", "rhodes", "bell", "sine", "marimba"}
+-- option lists only grow at the end: stored psets keep their sounds
+local VOICE_NAMES    = {"auto", table.unpack(PAL.VOICES)}   -- auto, rhodes, bell, sine, marimba, ...
+local PAD_NAMES      = {"auto", table.unpack(PAL.PADS)}
+local PALETTE_NAMES  = {"auto", table.unpack(PAL.NAMES)}
 local MOMENT_NAMES   = {"off", "rare", "some"}       -- -> S.moment_freq 0 / 1 / 2
 local PHRASES        = {8, 16, 32}
 
@@ -123,7 +127,12 @@ local function emit(part, notes, vel, dur_beats, m)
   local dur_s = (dur_beats or 0) * clock.get_beat_sec()
   if part == "pad" then
     local internal = O.route("pad")
-    if internal then engine.pad(notes[1], notes[2], notes[3], notes[4]) end
+    if internal then
+      -- the pad's character: the palette's, or the pinned one; it changes
+      -- with this voicing (crossfaded), never as a cut
+      tweak("pad_sound", PAL.pad_sound(params:get("pad_sound"), S.palette))
+      engine.pad(notes[1], notes[2], notes[3], notes[4])
+    end
     pad_midi(notes, S.gain.pad or 0)
   elseif part == "pedal" then
     local internal = O.route("pedal")
@@ -133,10 +142,10 @@ local function emit(part, notes, vel, dur_beats, m)
     local slot = tonumber(part:sub(6))
     local internal = O.route("motif", slot)
     if internal then
-      local v = params:get(part .. "_voice")
-      local voice = v == 1 and m.voice or (v - 1)
-      local bright = clamp(m.bright * (0.55 + 0.45 * S.bloom), 0, 1)
-      local send = clamp(m.send * params:get("space") / 50, 0, 1)
+      local voice = PAL.motif_voice(params:get(part .. "_voice"), S.palette, slot)
+      local tb, ts = PAL.tilt(S.palette)
+      local bright = clamp(m.bright * (0.55 + 0.45 * S.bloom) + tb, 0, 1)
+      local send = clamp(m.send * ts * params:get("space") / 50, 0, 1)
       engine.note(voice, notes, vel, dur_s, m.pan, bright, send)
     end
     O.note("motif", notes, dur_s, slot, vel)
@@ -786,6 +795,12 @@ local function setup_params()
   params:add_control("pedal_level", "pedal level", controlspec.new(0, 1, "lin", 0.01, 0.7))
 
   params:add_separator("SOUND")
+  -- auto: each new track picks a palette (never the last one again)
+  params:add_option("palette", "palette", PALETTE_NAMES, 1)
+  params:set_action("palette", function(v)
+    PAL.pin(S, v)                    -- now: next notes, next pad voicing
+  end)
+  params:add_option("pad_sound", "pad sound", PAD_NAMES, 1)
   for i = 1, 4 do
     params:add_option("motif" .. i .. "_voice", "motif " .. i .. " voice", VOICE_NAMES, 1)
   end

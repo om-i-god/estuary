@@ -42,3 +42,19 @@ Built 2026-11-04: twelve themes, each in `lib/vis/<name>.lua`. The v2 test follo
   - flock: that the boids settle into a calm flock on the real frame rate, not a jittery one.
   - mist: that the fog density follows the tuned out_lo / nat_amp gains (it was tuned against the sim's fake polls).
   - The theme name on the screen with K1 held: the longest is "fireflies 10/12".
+
+## Sounds v2: on-device listening checks
+Engine change: run SYSTEM > RESTART once before loading. The Mac checks (`test/sc/run.sh`) measure every voice and pad character alone and render one demo per palette; these are what only the device and ears can settle.
+- Balance by ear: RMS matching is within about 0.6 dB on the Mac, but the percussive voices (marimba, kalimba, celesta) still peak about 9-11 dB above the sustained ones (flute, glass), even with their softened mallets (5 ms onsets, longer and rounder decays). Listen for mallets poking out of the mix, or flute and glass sinking under the pad. Tune the per-voice GAIN constants in `lib/Engine_Estuary.sc`, then re-run `test/sc/run.sh` (it fails past 3 dB).
+- Pads: the five characters sit within about 2 dB RMS (it varies by a few tenths between runs, from their slow random drift). Strings and air peak a few dB higher than warm. Check that they don't swallow the motifs at high bloom, and check the air pad's breath at low chords.
+- CPU: Mac NRT timings put the motif voices at about 0.8-1.3x the cost of the v1 marimba, and the pads at or under the v1 pad. Check the norns CPU readout on a busy stretch (three motifs, a pad crossfade, pedal, a swell) with each palette, especially shallows, mist and glasshouse.
+- Voices that may sound off:
+  - the rhodes tine ping at high bright on the top notes (glassy or harsh?)
+  - the bell's slow stereo turn (seasick?)
+  - the kalimba shimmer (too metallic?)
+  - the vibes tremolo rate (3.4-4 Hz)
+  - the flute and sine breath (should be barely there)
+  - the glass swell on short notes (does it speak?)
+- Palettes: play a few `new track`s in each mode. Each palette should feel like one record, and none should feel dark, busy or harsh. Check that pinning a palette in PARAMS > SOUND changes the sounds straight away and the pad on its next voicing.
+- The pedal's slow level swell (0.11 Hz, plus or minus 4%): it should not read as a wobble.
+- Old psets: load a pset saved with v1 and confirm the motif voices it chose (rhodes / bell / sine / marimba) still play.

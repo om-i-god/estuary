@@ -37,7 +37,15 @@ do
   -- tweak keys the engine knows: fxMap entries (\key -> ...)
   TWEAKS = {}
   for k in src:gmatch('\\([%w_]+) %->') do TWEAKS[k] = true end
+  -- how many voices / pad characters the engine has
+  local function count(name)
+    local n = 0
+    for _ in assert(src:match(name .. " = %[(.-)%];")):gmatch("\\[%w_]+") do n = n + 1 end
+    return n
+  end
+  NVOICES, NPADS = count("voiceDefs"), count("padDefs")
 end
+VOICES_USED, PADS_USED = {}, {}
 TWV = {}   -- last value sent per tweak key
 engine = setmetatable({}, {__index = function(_, k)
   if k == "name" then return nil end
@@ -52,7 +60,9 @@ engine = setmetatable({}, {__index = function(_, k)
       if t == "s" and type(v) ~= "string" then error("engine." .. k .. " arg " .. i .. " not a string", 2) end
     end
     if k == "note" then
-      local _, _, _, dur_s = ...
+      local voice, _, _, dur_s = ...
+      assert(voice >= 1 and voice <= NVOICES and voice % 1 == 0, "note voice " .. voice .. " not an engine voice")
+      VOICES_USED[voice] = true
       local b = 60 / TEMPO
       assert(dur_s >= 0.05 and dur_s <= 4 * b + 1e-6, "note dur " .. dur_s .. " s out of range at " .. TEMPO .. " bpm")
     elseif k == "pedal" then
@@ -68,6 +78,10 @@ engine = setmetatable({}, {__index = function(_, k)
         assert(ok and val <= 3.5, "echo_time " .. val .. " s is not a clean division at " .. TEMPO .. " bpm")
       end
       if not TWEAKS[key] then error("engine.tweak: unknown key '" .. key .. "'", 2) end
+      if key == "pad_sound" then
+        assert(val >= 1 and val <= NPADS and val % 1 == 0, "pad_sound " .. val .. " not an engine pad")
+        PADS_USED[val] = true
+      end
       TWV[key] = val
     end
     if k == "nature_load" then LOADS[(...)] = (LOADS[(...)] or 0) + 1 end
@@ -633,6 +647,17 @@ if LISTEN and BARS >= 90 and not HKEY then
   if S.root_pc ~= want then extra[#extra + 1] = "listen: root ended on " .. S.root_pc .. ", wanted " .. want end
 end
 if notes_by[1] + notes_by[2] + notes_by[3] + notes_by[4] == 0 then extra[#extra + 1] = "no notes played" end
+-- palettes: every internal pad voicing says its character first; a long run
+-- of tracks hears more than one palette's sounds
+if (calls.pad or 0) > 0 and not next(PADS_USED) then extra[#extra + 1] = "pad voiced without a pad_sound" end
+do
+  local nv = 0
+  for _ in pairs(VOICES_USED) do nv = nv + 1 end
+  print(string.format("palette voices heard: %d of %d", nv, NVOICES))
+  if PMODE == 2 and MINUTES > 0 and MINUTES <= 6 and BARS >= 900 and (calls.note or 0) > 0 and nv <= 4 then
+    extra[#extra + 1] = "only " .. nv .. " voices heard across several tracks"
+  end
+end
 -- track end = stop, then play: each restart plays a whole track before the next stop
 if RESTART then
   if #STOPS < 2 then extra[#extra + 1] = "restart: only " .. #STOPS .. " track-end stops" end

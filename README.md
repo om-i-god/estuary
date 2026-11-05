@@ -10,11 +10,11 @@ the melodies, pad and pedal can also go out over USB MIDI or crow, each one: **i
 
 ## what you hear
 
-**motifs.** four short phrases, each a handful of notes and rests with its own odd-length cycle, so they drift in and out of phase with each other. each note is a step on a ladder of the current chord's own tones laid out close together (in the pentatonic modes only the ones the pentatonic allows; when that leaves fewer than four, a mode tone fills the widest gap), so a step is the next chord tone up or down, a motif stays within about an octave, and the melody always sits inside the harmony. a note held longer than a beat never sits a semitone right above a pad note. now and then a quick neighbour tone passes between two notes. up to three motifs sound at once, and they fade in and out over several bars. the four take turns: the one that has rested longest comes in next, and when the texture is full, every couple of phrases the longest-playing one makes way for one that has rested two phrases. each motif has a voice: **rhodes**, **bell**, **sine** or **marimba** (set to **auto** and the seed picks).
+**motifs.** four short phrases, each a handful of notes and rests with its own odd-length cycle, so they drift in and out of phase with each other. each note is a step on a ladder of the current chord's own tones laid out close together (in the pentatonic modes only the ones the pentatonic allows; when that leaves fewer than four, a mode tone fills the widest gap), so a step is the next chord tone up or down, a motif stays within about an octave, and the melody always sits inside the harmony. a note held longer than a beat never sits a semitone right above a pad note. now and then a quick neighbour tone passes between two notes. up to three motifs sound at once, and they fade in and out over several bars. the four take turns: the one that has rested longest comes in next, and when the texture is full, every couple of phrases the longest-playing one makes way for one that has rested two phrases. each motif has a voice, chosen by the track's palette (see **sounds** below) or set by hand.
 
-**pad.** a four-note chord that crossfades slowly whenever the harmony moves. it opens up as the bloom rises.
+**pad.** a four-note chord that crossfades slowly whenever the harmony moves. it opens up as the bloom rises. it has five characters (see **sounds**); a change of character arrives with the next voicing, crossfaded like any other.
 
-**pedal.** a soft low note under the chord. it plays in the middle and upper bloom (not at the very top) and holds the key's tonic through the calm sections, so the chords move above it. it sits at least a 4th below the pad, never a semitone (or a major 7th) from a chord note or a bare tritone under one; when it can't sit clear of a chord, it rests.
+**pedal.** a soft low note under the chord. it plays in the middle and upper bloom (not at the very top) and holds the key's tonic through the calm sections, so the chords move above it. it sits at least a 4th below the pad, never a semitone (or a major 7th) from a chord note or a bare tritone under one; when it can't sit clear of a chord, it rests. it is a pure low tone with a soft second harmonic for warmth, a slow gentle swell in its level and a soft 80 ms onset.
 
 **bloom.** everything hangs off one slow value from 0 to 1. at the very bottom one motif plays alone over the bed, with no pad. as it rises the pad fades in, a second and a third motif join, and the pedal arrives. the bloom decides who plays, how bright the notes are and how much echo and reverb they get.
 
@@ -39,6 +39,46 @@ chord voicing is set by the bloom when on **auto**: open (5th + 9th), quartal (s
 - **track:** a fixed arc over the track length (default 12 min): **arrival** → **bloom** → **tide** (with a water swell) → **return** → **settling**. the screen shows the section and how far through the track it is (`bloom 40%`). at the end it either stops or rolls into a new track with a new seed and sometimes a new key; after a stop, K2 + K3 starts that next track.
 
 the first time estuary loads it sets the norns clock to 72 bpm; after that the tempo is yours.
+
+---
+
+## sounds
+
+the instruments are modelled on the gear of 80s environmental music: soft FM electric piano and bells, sine tones, mallets, glassy digital pads and gentle analog strings, all through the same warm echo and hall. nothing is distorted, every note starts softly (no clicks), and at the same velocity and brightness every voice is equally loud, so any palette sits in the same mix. brightness changes the tone (more FM index, harder mallet, more upper partials), not the level.
+
+**motif voices** (PARAMS > SOUND > motif 1-4 voice):
+- **rhodes:** a DX-style FM electric piano. a warm body with a short bell-like tine ping on top, harder and brighter with velocity, a gentle stereo tremolo; high notes fade a little sooner.
+- **bell:** a glassy FM bell with a soft strike, a faint inharmonic shimmer in the first second and a long tail that turns slowly in the stereo field.
+- **sine:** a pure tone with a breathy puff at the start and a slow, shallow vibrato once the note has settled.
+- **marimba:** round wooden bars (tuned 1 : 4 : 10 modes) with a soft felt mallet; softer notes have fewer overtones.
+- **vibes:** a vibraphone with a long ring and a slow motor tremolo that sways between the speakers.
+- **celesta:** small, high and sweet, like a music box: a short ring with a soft octave and a tiny glint.
+- **kalimba:** a soft thumb pluck with the tine's brief inharmonic shimmer leaning to one side.
+- **flute:** a breathy pan flute or ocarina. a sine core with soft harmonics, a gentle chiff, quiet breath and late vibrato; it holds for the length of the note.
+- **glass:** a glass harmonica. a slow swell to a pure tone with a faint shine growing in and a slow shimmer.
+
+**pad characters** (PARAMS > SOUND > pad sound):
+- **warm:** triangle and sine with a soft sub, each note drifting and breathing slowly under a moving low-pass.
+- **strings:** soft analog strings: gently filtered saws with a slow ensemble chorus.
+- **glass:** a digital FM pad with a gentle double-octave shimmer that comes and goes on each note.
+- **air:** a breathy choir: noise tuned to each note and its octave over a quiet sine core.
+- **organ:** soft sine drawbars, each note swaying slowly like a rotor.
+
+**palettes.** a palette is one record's worth of sound: a voice for each motif, a pad character, and a small lean in brightness and echo/reverb. with **palette** on **auto**, every new track picks one: the choice is seeded, but steered away from the palette just played, so the same one never comes twice in a row (rebuilding the same seed keeps it). pick a name to pin it: it applies at once and on every new track after. **motif voice** and **pad sound** on **auto** follow the palette; set them by name to override it.
+
+| palette | motif 1 | motif 2 | motif 3 | motif 4 | pad |
+|---|---|---|---|---|---|
+| harbor | rhodes | bell | sine | vibes | warm |
+| shallows | marimba | celesta | flute | kalimba | air |
+| glasshouse | sine | glass | rhodes | bell | glass |
+| morning | vibes | celesta | sine | marimba | strings |
+| riverbank | flute | kalimba | marimba | celesta | warm |
+| tidepool | kalimba | glass | marimba | bell | organ |
+| veranda | rhodes | vibes | flute | celesta | strings |
+| mist | sine | glass | flute | bell | air |
+| atrium | rhodes | celesta | vibes | glass | organ |
+
+motifs 2 and 4 play an octave above 1 and 3, so the small high voices sit there. the new voices live in the engine: after updating, run **SYSTEM > RESTART** once before loading the script. saved psets keep their voices (the old choices keep their positions in every list).
 
 ---
 
@@ -94,7 +134,7 @@ screen: key and mode top left with the chord below, section top right (with `~` 
 - **MIX:** space (echo + reverb), tone, echo time (1/8, 1/4, 3/8, 1/2), echo feedback (held to 0.6 at 1/8), reverb size, level
 - **NATURE:** bed level, swell level, moments (off / rare / some), moment level, nature tone
 - **LEVELS:** motif level, pad level, pedal level
-- **SOUND:** motif 1-4 voice (auto, rhodes, bell, sine, marimba)
+- **SOUND:** palette (auto, or pin one by name), pad sound (auto, warm, strings, glass, air, organ), motif 1-4 voice (auto, rhodes, bell, sine, marimba, vibes, celesta, kalimba, flute, glass); auto follows the palette
 - **LISTEN:** follow input key, input gate (dB), hold before move (s)
 - **MOTIF OUT / PAD OUT / PEDAL OUT:** output (internal / midi / both), midi device, midi channel (defaults: motifs ch 3, pad ch 2, pedal ch 1)
 - **MOTIF OUT > motifs to midi:** all four on one channel, a single motif (for a mono synth: the others keep playing on norns), or each motif on its own channel. velocity follows the part's fade and the note length follows the note
@@ -152,8 +192,8 @@ then put the recordings in place: run `tools/fetch_placeholders.sh` first if `au
 
 - `lua test/unit.lua test/unit_*.lua` runs the unit tests (run from the repo root). `test/unit_visuals.lua` draws every theme through silence, a mid texture, a peak and a swell into the rasterizer, and checks how much of the screen is lit, frame-to-frame change, the draw-call budget, NaN, motion at silence, reaction to the top and low bands, and bad input. `VISREPORT=1` prints its numbers.
 - `lua test/rules_selftest.lua` checks the music-rules checker itself.
-- `lua test/sim.lua [bars] [mode 1=set 2=track] [minutes] [tempo]` runs the script headless against stubbed norns APIs, prints the arc every 100 bars, and ends with `RULES ok` or a list of rule violations (exit 1). examples: `lua test/sim.lua 2160 1` (two hours of set), `lua test/sim.lua 900 2 12` (a 12-minute track). `MUTES=1` toggles random mutes and solos each bar, `HKEY=1` makes random hand key and mode changes, `RESTART=1` sets track end to stop and restarts after each stop, `SEED=n` replays a run, `SNAP=dir` renders each visual theme to a PGM in `dir` through a small rasterizer (`test/raster.lua`), plus `_still` (the engine's ears silent) and `_loud` (ears pinned) versions. the sim feeds fake output polls from the music every 8th.
-- `test/sc/run.sh` compiles `lib/Engine_Estuary.sc` against a stub CroneEngine, boots a local SuperCollider server, fires every command (including a nature load and play in the same tick for each slot), checks the output polls (`out_amp` rises with a note and falls back after its tail; `nat_amp` rises with nature) and renders a wav; it exits 1 if any check fails (needs SuperCollider.app on the Mac).
+- `lua test/sim.lua [bars] [mode 1=set 2=track] [minutes] [tempo]` runs the script headless against stubbed norns APIs, prints the arc every 100 bars, and ends with `RULES ok` or a list of rule violations (exit 1). examples: `lua test/sim.lua 2160 1` (two hours of set), `lua test/sim.lua 900 2 12` (a 12-minute track), `lua test/sim.lua 900 2 4` (several short tracks: also checks that more than one palette's voices get heard). `MUTES=1` toggles random mutes and solos each bar, `HKEY=1` makes random hand key and mode changes, `RESTART=1` sets track end to stop and restarts after each stop, `SEED=n` replays a run, `SNAP=dir` renders each visual theme to a PGM in `dir` through a small rasterizer (`test/raster.lua`), plus `_still` (the engine's ears silent) and `_loud` (ears pinned) versions. the sim feeds fake output polls from the music every 8th.
+- `test/sc/run.sh` compiles `lib/Engine_Estuary.sc` against a stub CroneEngine, boots a local SuperCollider server, fires every command (including a nature load and play in the same tick for each slot), checks the output polls (`out_amp` rises with a note and falls back after its tail; `nat_amp` rises with nature) and renders a wav. then `test/sc/sounds.scd` plays every motif voice (3 pitches x 3 brightnesses) and every pad character alone, prints their RMS and peak, checks no NaN, no clipping, soft onsets and that voices (and pads) sit within 3 dB of each other, checks a pad-character change crossfades, and renders a demo wav per palette to `$DEMO_DIR` (default `$TMPDIR/estuary_demos`). it exits 1 if any check fails (needs SuperCollider.app on the Mac).
 
 ## license
 
