@@ -67,7 +67,7 @@ return function(K)
     for k = 0, 4 do
       local a = clamp(hi * 1.6 - k * 0.25, 0, 1) * (0.6 + 0.4 * math.sin(T * 0.3 + k * 2))
       if a > 0.05 then
-        local x0 = 14 + k * 26 + 8 * math.sin(T * 0.05 + k) + K.drift_x * 0.05 % 4
+        local x0 = 14 + k * 26 + 8 * math.sin(T * 0.05 + k) + 2 * math.sin(K.drift_x * 0.03 + k)
         for y = SURF + 2, 46, 2 do
           local d = (y - SURF) / 42
           put(a * 3.5 * (1 - d) + 0.5, x0 + y * 0.35, y, 1 + d * 2.5, 1)

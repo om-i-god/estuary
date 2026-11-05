@@ -130,11 +130,13 @@ for l = 1, 15 do batch[l], bn[l] = {}, 0 end
 
 local function put(l, x, y, w, h)
   l = l * B
+  w, h = w or 1, h or 1
   if not (l >= 0.5) or x ~= x or y ~= y then return end     -- also drops NaN
+  if not (w >= 1 and h >= 1) then return end                 -- empty / negative sizes
   l = math.floor(l + 0.5)
   if l > 15 then l = 15 end
   local b, n = batch[l], bn[l]
-  b[n + 1], b[n + 2], b[n + 3], b[n + 4] = math.floor(x), math.floor(y), w or 1, h or 1
+  b[n + 1], b[n + 2], b[n + 3], b[n + 4] = math.floor(x), math.floor(y), w, h
   bn[l] = n + 4
 end
 

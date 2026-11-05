@@ -11,6 +11,9 @@ return function(K)
   local CARD_W, CARD_H, CARD_Y = 26, 34, 8
   local SPOT = {0, 37, 74, 111}           -- where along the water each window looks
   local card_wl = {0, 0, 0, 0}
+  local cf, cu = {0, 0, 0, 0}, {}
+
+  function M.clear() cf, cu = {0, 0, 0, 0}, {} end
 
   -- the rocks in the fourth window stand still while the water moves round
   -- them: {centre x, half width, height above the resting water}
@@ -47,7 +50,7 @@ return function(K)
     end,
     -- open water: nothing between you and the line but a far sail
     function(x0, y0, wl, lit, T)
-      local sx = x0 + 4 + ((T * 0.6 + 7) % (CARD_W - 8))
+      local sx = x0 + 4 + (CARD_W - 9) * (0.5 + 0.5 * math.sin(T * 0.05 + 1))
       put(2 + lit, sx, wl - 3, 1, 3); put(2 + lit, sx + 1, wl - 2, 1, 2)
     end,
     -- a reed bank: stems in front of the water, leaning with the current
@@ -89,7 +92,9 @@ return function(K)
       local x0, y0 = 6 + (i - 1) * 31, CARD_Y
       local m = K.motif(S, i)
       local on = K.sounding(S, i)
-      local f, glow = K.slot_flash[i], K.slot_glow[i]
+      -- each window's light eases up and down, and glides to a new pitch
+      cf[i] = K.follow(cf[i], K.slot_flash[i], 0.25, K.DT)
+      local f, glow = cf[i], K.slot_glow[i]
       -- the frame
       local edge = (on and 3 or 2) + f * 5
       put(edge, x0, y0, CARD_W, 1)
@@ -103,6 +108,8 @@ return function(K)
       card_wl[i] = wl
       local lm = K.slot_last[i]
       local u = lm and clamp((lm - 55) / 36, 0, 1)
+      if u then cu[i] = cu[i] and K.follow(cu[i], u, 0.3, K.DT) or u end
+      u = cu[i]
       local sx = u and (x0 + 4 + u * 17)
       local lit = glow * 0.8 + f
       -- the sky: a glow over the line, warmer with the bloom and the light
@@ -134,7 +141,7 @@ return function(K)
       -- pitch, its path on the water below
       if sx and lit > 0.04 then
         local sy = y0 + 3 + (1 - u) * math.max(1, wl - y0 - 7)
-        put(2 + lit * 6, sx, sy, 2, 2)
+        put(math.min(1, lit * 4) * 2 + lit * 6, sx, sy, 2, 2)
         for yy = math.floor(wl) + 2, y0 + CARD_H - 3, 2 do
           local fl = 0.5 + 0.5 * math.sin(T * 4 + yy * 1.7 + i)
           local w = 1 + math.floor(fl * 2.5 + A[K.HI] * 2)

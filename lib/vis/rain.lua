@@ -62,7 +62,7 @@ return function(K)
       for x = (off % 40) - 40, 127, 40 do
         local w = 14 + 8 * math.sin(x * 0.07 + r + T * 0.05)
         put(1, x, y, w, 1)
-        if r % 2 == 0 then put(1, x + 4, y + 1, w - 8, 1) end
+        if r % 2 == 0 and w > 9 then put(1, x + 4, y + 1, w - 8, 1) end
       end
     end
     -- the near bank: dim grass, tufts leaning with the wind

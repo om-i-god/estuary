@@ -1,6 +1,6 @@
--- reeds: a reed bed at the water's edge, in silhouette against an evening
--- glow, in three layers: a dim far bank, a middle bed, and a few tall reeds
--- close by with seed heads. every stem sways with the current and the heave,
+-- reeds: a reed bed at the water's edge under an open evening sky, a low
+-- glow on the far bank and the first stars, in three layers: a dim far
+-- bank, a middle bed, and a few tall reeds close by with seed heads. every stem sways with the current and the heave,
 -- and sound bends them further; a swell sends a slow wave of bending across
 -- the bed. a note makes the reed nearest its pitch nod, and a longer one
 -- sends a dragonfly hovering past at that column. the water below holds the
@@ -104,11 +104,18 @@ return function(K)
     local T = K.T
     -- the glow behind the bed, brighter with the bloom
     local glow = 0.75 + 0.7 * K.bloom
-    K.gradient(16, WL - 1, function(y) local u = (WL - y) / 26; return glow * (1 - u) ^ 1.6 end, bank)
+    -- open sky: a low glow hugging the bank, a few first stars above
+    K.gradient(WL - 7, WL - 1, function(y) return (0.6 + 0.35 * K.bloom) * ((y - WL + 8) / 8) ^ 1.5 end, bank)
+    for i = 1, 7 do
+      local x, y = 9 + (i - 1) * 18 + 7 * K.hash(i, 44), 4 + 16 * K.hash(i, 45)
+      put((1.4 - 0.5 * K.bloom) * (1 + 0.5 * math.sin(K.T * 0.5 + i * 2.1)), x, y, 1, 1)
+    end
     for c = 0, 63 do
       local t = math.floor(bank[c] + 0.5)
       put(1, c * 2, t, 2, 1)
-      for y = t + 2 + c % 3, WL - 1, 3 do put(1, c * 2, y, 2, 1) end
+      for y = t + 2, WL - 1, 2 do
+        if K.hash(c * 64 + y, 43) < 0.3 then put(1, c * 2 + (y // 2) % 2, y, 1, 1) end
+      end
     end
     -- the water: the glow comes back, broken by the current
     for d = 2, 13, 2 do

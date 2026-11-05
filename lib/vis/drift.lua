@@ -6,7 +6,7 @@
 -- surface, and a shimmering line joins two leaves whose phases line up
 return function(K)
   local M = {}
-  local put, A, clamp = K.put, K.A, K.clamp
+  local put, A, clamp, ease = K.put, K.A, K.clamp, K.ease
 
   local ORBIT_RY = {6, 12, 18, 24}
   local PETALS = 16
@@ -73,15 +73,21 @@ return function(K)
         put(2 + K.bloom, 128 - e2, y, 2, 1); put(lap, 128 - e2 - 2, y, 1, 1)
       end
     end
+    -- the sky lying on the pool: long faint sheens that slide with the
+    -- current, broken where the eddies turn the surface
+    for y = 6, 58, 4 do
+      K.streaks(1, y, 7 + (y * 3) % 5, 17 + (y * 7) % 6, K.drift_x * (0.5 + y * 0.01) + y * 9.7 + math.sin(T * 0.2 + y) * 3,
+        function(x) return math.sin(x * 0.05 + y * 0.13 - T * 0.1) > -0.3 end)
+    end
     -- the surface: a faint light texture moving with the current
-    K.surface(0, 1, 128, 64, 1, 13, 6, 3)
+    K.surface(0, 1, 128, 64, 1, 10, 5, 3)
     -- the eddies' paths: arcs of light that run round with the water
     for i = 1, 4 do
       local n = 14 + i * 14
       for k = 0, n - 1 do
         local a = k / n * K.TAU
         local sh = math.sin(a * 3 - T * (0.5 + 0.1 * i) * (i % 2 == 0 and 1 or -1) + i)
-        if sh > 0.35 then
+        if sh > 0.05 then
           local x, y = orbit_pt(i, a)
           put(1 + (sh > 0.8 and 1 or 0) + hi * 2.5 * math.max(0, math.sin(k * 2.3 + T * 7 + i)), x, y, 2, 1)
         end
@@ -124,7 +130,12 @@ return function(K)
       end
     end
     -- a moment: a petal spins in the still centre
-    put(3 + clamp(1 - K.moment_age / 3, 0, 1) * 6, 64, 32, 1, 1)
+    local ma = K.moment_age
+    if ma < 8 then
+      local a = ease(ma / 0.8) * (1 - ease((ma - 3) / 5))
+      local sx, sy = 64 + 2 * math.cos(ma * 1.3), 32 + math.sin(ma * 1.3)
+      put(6 * a, sx, sy, 2, 1); put(3 * a, sx, sy + 1, 1, 1)
+    end
     -- a shimmering dotted line joins two leaves whose phases line up
     for i = 1, np - 1 do
       for j = i + 1, np do

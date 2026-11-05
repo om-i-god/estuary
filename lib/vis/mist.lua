@@ -46,8 +46,9 @@ return function(K)
   function M.draw()
     local T = K.T
     local bloom = K.bloom
-    local sun = clamp(1 - K.moment_age / 14, 0, 1)
-    sun = ease(math.min(sun * 4, 1)) * (sun > 0 and 1 or 0)
+    -- the sun after a moment: eases in over ~1.5 s, out over the last 3.5
+    local age = K.moment_age
+    local sun = ease(clamp(age / 1.5, 0, 1)) * ease(clamp((14 - age) / 3.5, 0, 1))
     -- density: thicker with out_lo and the water sounds, a swell rolls more in,
     -- the sun burns it back while it shines
     local dens = clamp(0.35 + 0.35 * A[K.LO] + 0.25 * A[K.NAT] + 0.35 * K.sw_disp - 0.25 * sun, 0.15, 0.8)

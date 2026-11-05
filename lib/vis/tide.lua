@@ -18,6 +18,8 @@ return function(K)
     birds = {{x = 104, y = 50, ph = 0.4}, {x = 116, y = 52, ph = 2.2}}
   end
 
+  function M.clear() wet_y = {} end
+
   local function shore_y(b) return 52 - b * 30 end
 
   local live_pt = {bloom = 0, wet = 0}
@@ -69,7 +71,7 @@ return function(K)
       for yy = 3 + (x // 2) % 3, yl - 3, 4 do
         local near = 1 - (yl - yy) / 50
         local w = math.sin(x * 0.07 + yy * 0.55 - T * 0.9 + K.drift_x * 0.08) + 0.6 * math.sin(x * 0.03 - yy * 0.2 + T * 0.3)
-        if w > 0.7 - 0.3 * near then
+        if w > 0.45 - 0.35 * near then
           put((w > 1.25 and 2 or 1) + near * 0.8 + hi * 2 * math.max(0, math.sin(x * 1.3 + yy * 2.1 + T * 8)), x, yy, 2, 1)
         end
       end
@@ -80,6 +82,8 @@ return function(K)
       local yf = math.min(62, yl + reach)
       front[x // 2] = yf
       put(5, x, yl, 2, 1)
+      -- the damp strip the sea always keeps dark-bright just above the line
+      if (x // 2) % 3 ~= 0 then put(1.5, x, yl - 2, 2, 1) end
       if wet > 0.02 then put(2 + wet * 3, x, yl - 1, 2, 1) end
       -- where the last wash reached: it creeps back up slowly as it drains
       local c = x // 2

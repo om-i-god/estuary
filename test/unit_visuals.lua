@@ -164,6 +164,7 @@ local function run(theme, scen, opts)
       for name, v in pairs(audio(t)) do VIS.audio(name, v) end
     end
     if opts.switch_every and f % opts.switch_every == 0 then th = th % #NAMES + 1 end
+    if opts.at then opts.at(f, VIS, S) end
     screen.clear()
     RAST.reset_ops()
     VIS.draw(th, S, dt)
@@ -335,7 +336,9 @@ test("visuals names: v2 order first, then the v3 themes", function()
   for i, n in ipairs(NAMES) do assert(VIS.names[i] == n, i .. ": " .. tostring(VIS.names[i])) end
 end)
 
--- out-of-range audio draws exactly what the clamped value draws
+-- out-of-range audio draws exactly what the clamped value draws. VIS.audio
+-- clamps on arrival, so today this cannot fail: it guards against a theme
+-- ever reading raw poll values
 test("visuals out-of-range audio == clamped", function()
   for th = 1, #NAMES do
     local over = run(th, "mid", {frames = 80, keep = true, audio = function(t)
@@ -352,9 +355,10 @@ test("visuals out-of-range audio == clamped", function()
   end
 end)
 
--- frame-rate independence: a jittery frame rate (25 to 60 ms per frame)
--- shows the same scene as a steady 20 fps one, and never jumps further per
--- second of time than the steady one does
+-- frame-rate independence (coarse): with a jittery frame rate (25 to 60 ms
+-- per frame) a theme lights about as much of the screen as at a steady 20
+-- fps, draws nothing bad, and stays inside the same frame-to-frame bound.
+-- it does not compare the pictures themselves
 test("visuals variable dt", function()
   for th = 1, #NAMES do
     local steady = run(th, "mid", {frames = 240})
@@ -392,6 +396,25 @@ test("visuals speed param scales motion", function()
     local slow, fast = moved(1), moved(9)
     if REPORT then print(string.format("speed %-10s 1: %.3f  9: %.3f", NAMES[th], slow, fast)) end
     assert(fast > slow * 1.5, string.format("%s: speed 9 moves %.3f vs speed 1 %.3f", NAMES[th], fast, slow))
+  end
+end)
+
+-- onsets ease in: a moment and a note fired mid-run never jump the picture
+-- more than ~3x a typical frame's change
+test("visuals onsets ease in", function()
+  local ON = 140
+  for th = 1, #NAMES do
+    local st = run(th, "mid", {frames = 200, keep = true, at = function(f, VIS)
+      if f == ON then VIS.event("moment", "passing"); VIS.event("note", 2, 72, 1.5) end
+    end})
+    local d = {}
+    for i = 100, ON - 1 do d[#d + 1] = bufdiff(st.frames[i - 1], st.frames[i]) end
+    table.sort(d)
+    local med = d[#d // 2 + 1]
+    local onset = 0
+    for i = ON, ON + 4 do onset = math.max(onset, bufdiff(st.frames[i - 1], st.frames[i])) end
+    if REPORT then print(string.format("onset %-10s median %.4f onset %.4f", NAMES[th], med, onset)) end
+    assert(onset <= 3 * math.max(med, 0.01), string.format("%s: onset jump %.4f vs median %.4f", NAMES[th], onset, med))
   end
 end)
 

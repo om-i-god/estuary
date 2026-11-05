@@ -102,7 +102,8 @@ return function(K)
       if p.x > 136 then p.x = -8 elseif p.x < -8 then p.x = 136 end
       pad(p, 2 + 0.8 * K.bloom)
       put(2 + 4 * hi * math.max(0, math.sin(T * 5 + i * 2)), p.x - p.r * 0.7, p.y - p.r * 0.6, 2, 1)   -- light on its rim
-      if i == 1 and p.r > 3 then put(4 + 3 * K.bloom, p.x - 1, p.y - 1, 2, 2) end   -- a flower
+      local fl = ease((K.bloom - 0.3) / 0.25)                      -- a flower as the bloom opens
+      if i == 1 and p.r > 3 and fl > 0.02 then put((4 + 3 * K.bloom) * fl, p.x - 1, p.y - 1, 2, 2) end
     end
     -- rings where a fish touched the surface
     for i = #rings, 1, -1 do
