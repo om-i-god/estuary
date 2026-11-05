@@ -1,9 +1,12 @@
 // compile + smoke-test Engine_Estuary: boot, alloc, fire every command,
-// render ~26 s, report SMOKE / LEVELS / CHECK nature. run via test/sc/run.sh
+// render ~26 s, report SMOKE / LEVELS / CHECK nature; then sounds.scd
+// (voices, pads, loudness match, palette demos). run via test/sc/run.sh
 var out = thisProcess.argv[0] ? "/tmp/estuary_test.wav";
-var fix = PathName(thisProcess.nowExecutingPath).pathOnly +/+ "fixtures/";
+var here = PathName(thisProcess.nowExecutingPath).pathOnly;
+var fix = here +/+ "fixtures/";
 s.options.numInputBusChannels = 0;
 s.options.numOutputBusChannels = 2;
+s.options.memSize = 2 ** 18;            // sounds.scd runs one engine per palette at once
 s.waitForBoot {
   var xg = Group.new(s), inb = [Bus.audio(s, 1), Bus.audio(s, 1)];
   var ctx = (server: s, xg: xg, in_b: inb, out_b: Bus.new(\audio, 0, 2, s));
@@ -129,6 +132,13 @@ s.waitForBoot {
     ("SMOKE " ++ (if(n == expect.size, { "ok" }, { "FAILED" })) ++ " n=" ++ n).postln;
   });
   "SMOKE DONE".postln;
+  // sounds v2: every voice and pad character, loudness match, palette demos
+  try {
+    ~eng = eng;
+    ~root = here +/+ "../../";
+    ~demoDir = "DEMO_DIR".getenv;
+    (here +/+ "sounds.scd").load;
+  } { |err| ("ERROR in sounds.scd: " ++ err.errorString).postln };
   s.quit;
   0.5.wait;
   0.exit;

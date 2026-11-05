@@ -14,8 +14,11 @@
 // so every compound expression below is fully parenthesized.
 //
 // commands (formats are parsed by the headless sim, keep them literal)
-//   note        voice midi vel dur pan bright send   (voice 1 rhodes 2 bell 3 sine 4 marimba)
-//   pad         m1 m2 m3 m4     (crossfades from the current pad over pad_xfade s)
+//   note        voice midi vel dur pan bright send   (voice 1 rhodes 2 bell 3 sine 4 marimba
+//                                                    5 vibes 6 celesta 7 kalimba 8 flute 9 glass)
+//   pad         m1 m2 m3 m4     (crossfades from the current pad over pad_xfade s,
+//                                in the character set by `tweak pad_sound`:
+//                                1 warm 2 strings 3 glass 4 air 5 organ)
 //   pedal       midi vel dur   (one voice: a new pedal releases the old; vel 0 only releases)
 //   nature_load slot path       (1 bed, 2 swell, 3 moment)
 //   nature_play slot level fade (1/2 loop from a random position when rising
@@ -36,9 +39,12 @@ Engine_Estuary : CroneEngine {
   var voiceGroup, fxGroup;
   var mainBus, echoBus, verbBus, padBus, natBus;
   var keyBus, inAmpBus, natAmpBus, outBus, natSumBus;
-  var padSynth, pedalSynth, padMixSynth, natFxSynth, echoSynth, verbSynth, masterSynth, listenSynth;
+  var pedalSynth, padMixSynth, natFxSynth, echoSynth, verbSynth, masterSynth, listenSynth;
   var natBufs, natSynths, natLevels, natLoading, natPending, natGen, natOnceUse;
   var st, fx, fxMap, fxVals;
+  // engine voice / pad_sound indices (1-based) -> SynthDefs. these lists
+  // only grow at the end; lib/palettes.lua mirrors them (VOICES, PADS)
+  var <voiceDefs, <padDefs, <padSynth;
 
   *new { arg context, doneCallback;
     ^super.new(context, doneCallback);
@@ -60,6 +66,14 @@ Engine_Estuary : CroneEngine {
     var toHz = { arg v, lo, hi;
       var u = v.clip(0, 1);
       Select.kr(v > 1, [u.linexp(0, 1, lo, hi), v.clip(lo, hi)])
+    };
+    // a motif voice's way out: mono -> Pan2; [l, r] -> Balance2 at Pan2's
+    // centre gain; then the dry bus and the two sends
+    var vout = { arg sig, pan, out, echoOut, verbOut, echo, verb;
+      var o = if(sig.isArray, { Balance2.ar(sig[0], sig[1], pan) * 0.7071 }, { Pan2.ar(sig, pan) });
+      Out.ar(out, o);
+      Out.ar(echoOut, o * echo);
+      Out.ar(verbOut, o * verb);
     };
 
     mainBus  = Bus.audio(s, 2);
@@ -89,83 +103,243 @@ Engine_Estuary : CroneEngine {
     st.put(\motif_level, 1.0);
     st.put(\pedal_level, 1.0);
     st.put(\pad_xfade, 4.0);
+    st.put(\pad_sound, 1);
+
+    voiceDefs = [\est_rhodes, \est_bell, \est_sine, \est_marimba, \est_vibes, \est_celesta, \est_kalimba, \est_flute, \est_glass];
+    padDefs = [\est_pad_warm, \est_pad_strings, \est_pad_glass, \est_pad_air, \est_pad_organ];
 
     // ---------------------------------------------------------------- voices
 
-    // electric piano: 2-op FM, ratio 1, index decaying 3 -> 0.5, slow tremolo
+    // Every motif voice takes the same args. amp carries vel and the motif
+    // level; vel alone shapes the timbre (FM index, mallet hardness), so the
+    // level param never changes the tone. Each voice ends in vout. A GAIN
+    // constant per voice keeps them within 3 dB RMS of each other at equal
+    // vel and bright (test/sc/sounds.scd measures it). No onset is faster than
+    // 3.5 ms, and nothing saturates. ks shortens decays on high notes.
+
+    // electric piano, the DX "E.PIANO 1" family: a body pair (1:1, index
+    // falls with time) plus a tine pair (1:14, a short bright ping), both
+    // scaled by vel and bright; a gentle stereo tremolo
     SynthDef(\est_rhodes, {
-      arg out, echoOut, verbOut, freq=261, amp=0.2, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
-      var idx  = XLine.kr((0.8 + (bright * 2.2)), 0.5, 1.4);
-      var mod  = SinOsc.ar(freq, 0, idx * 0.5);
-      var car  = SinOsc.ar(freq, mod);
-      var trem = (1 + (0.07 * SinOsc.kr(4.5, Rand(0, 2pi))));
-      var env  = EnvGen.kr(Env([0, 1, 0.55, 0], [0.006, (dur * 0.5), (dur * 0.9) + 0.9], [-2, -2, -4]), doneAction: 2);
-      var sig  = car * env * trem * amp;
-      sig = LPF.ar(sig, (2200 + (bright * 5500)));
-      sig = Pan2.ar(sig, pan);
-      Out.ar(out, sig);
-      Out.ar(echoOut, sig * echo);
-      Out.ar(verbOut, sig * verb);
+      arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var ks   = (freq / 261).clip(0.25, 8).pow(-0.4);
+      var hard = ((vel * 0.5) + (bright * 0.7)) * Rand(0.92, 1.08);
+      var bIdx = EnvGen.kr(Env([(0.3 + (hard * 1.3)), 0.25], [(1.6 * ks)], [-3]));
+      var body = SinOsc.ar(freq, SinOsc.ar(freq, 0, bIdx));
+      var tIdx = EnvGen.kr(Env([0, (0.2 + (hard * 0.8)), 0], [0.004, (0.22 * ks)], [\sin, -5]));
+      var tine = SinOsc.ar(freq, SinOsc.ar((freq * 14).min(18000), Rand(0, 2pi), tIdx));
+      var tEnv = EnvGen.kr(Env([1, 0.2], [(0.9 * ks)], [-4]));
+      var env  = EnvGen.ar(Env([0, 1, 0.55, 0], [0.004, (dur * 0.8), (((dur * 0.4) + 1.1) * ks)], [\sin, -3, -4]), doneAction: 2);
+      var tr   = SinOsc.kr(Rand(4.0, 4.6), Rand(0, 2pi)) * (0.05 + (0.04 * bright));
+      var sig  = (body * 0.75) + ((tine * 0.4) * tEnv);
+      sig = LPF.ar(sig, (2400 + (bright * 5200))) * env * amp * 1.46;
+      vout.value([sig * (1 + tr), sig * (1 - tr)], pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
-    // glassy bell: 2-op FM ratio 3.5, soft index, long tail
+    // glassy DX/TX bell: 1:3.5 FM with a long tail, an inharmonic strike
+    // partial (2.76) that fades in under a second, and a partner a fraction
+    // of a hertz away on the stereo side only (a slow turn, no mono beat)
     SynthDef(\est_bell, {
-      arg out, echoOut, verbOut, freq=523, amp=0.2, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
-      var idx = XLine.kr((0.5 + (bright * 0.9)), 0.15, 2.0);
-      var mod = SinOsc.ar((freq * 3.5), 0, idx);
-      var car = SinOsc.ar(freq, mod);
-      var env = EnvGen.kr(Env([0, 1, 0], [0.004, dur + 2.2], [-2, -5]), doneAction: 2);
-      var sig = car * env * amp * 0.8;
-      sig = LPF.ar(sig, (3000 + (bright * 6000)));
-      sig = Pan2.ar(sig, pan);
-      Out.ar(out, sig);
-      Out.ar(echoOut, sig * echo);
-      Out.ar(verbOut, sig * verb);
+      arg out, echoOut, verbOut, freq=523, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var hard = ((vel * 0.4) + (bright * 0.8)) * Rand(0.9, 1.1);
+      var i1   = EnvGen.kr(Env([(0.25 + (hard * 1.1)), 0.1], [2.8], [-4]));
+      var c1   = SinOsc.ar(freq, SinOsc.ar((freq * 3.5).min(18000), 0, i1));
+      var c2   = SinOsc.ar((freq * 2.76).min(16000)) * EnvGen.kr(Env([0, 1, 0], [0.006, 0.9], [\sin, -4])) * (0.06 + (0.2 * bright));
+      var c3   = SinOsc.ar(freq + Rand(0.25, 0.6), Rand(0, 2pi)) * 0.3;
+      var env  = EnvGen.kr(Env([0, 1, 0], [0.006, (dur + 3.2)], [\sin, -5]), doneAction: 2);
+      var cut  = 3500 + (bright * 6000);
+      var mid  = LPF.ar(c1 + c2, cut) * env * amp * 1.32;
+      var side = LPF.ar(c3, cut) * env * amp * 1.32;
+      vout.value([mid + side, mid - side], pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
-    // pure sine with a slow 30-80 ms attack
+    // pure sine with a breathy onset (a puff of band-passed noise) and a
+    // slow, shallow vibrato that only arrives after the note has settled
     SynthDef(\est_sine, {
-      arg out, echoOut, verbOut, freq=261, amp=0.2, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
-      var atk = (0.08 - (bright * 0.05));
-      var env = EnvGen.kr(Env([0, 1, 0.7, 0], [atk, dur * 0.4, (dur * 0.6) + 0.6], [2, -2, -3]), doneAction: 2);
-      var sig = SinOsc.ar(freq) + (SinOsc.ar((freq * 2)) * 0.15 * bright);
-      sig = Pan2.ar(sig * env * amp, pan);
-      Out.ar(out, sig);
-      Out.ar(echoOut, sig * echo);
-      Out.ar(verbOut, sig * verb);
+      arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var atk  = 0.09 - (bright * 0.05);
+      var env  = EnvGen.kr(Env([0, 1, 0.75, 0], [atk, (dur * 0.5), ((dur * 0.5) + 0.8)], [\sin, -1, -3]), doneAction: 2);
+      var vd   = EnvGen.kr(Env([0, 0, 1], [0.6, 1.8], [0, 2])) * 0.0025;
+      var f    = freq * (1 + (SinOsc.kr(Rand(3.2, 3.8), Rand(0, 2pi)) * vd));
+      var core = SinOsc.ar(f) + (SinOsc.ar(f * 2) * (0.03 + (0.12 * bright))) + (SinOsc.ar(f * 3) * (0.035 * bright));
+      var br   = BPF.ar(WhiteNoise.ar, (freq * 2).min(12000), 0.7) * ((500 / freq).sqrt * 0.32) * EnvGen.kr(Env([0, 1, 0], [0.012, 0.15], [\sin, -4])) * (0.2 + (vel * 0.25));
+      var sig  = (core + br) * env * amp * 0.78;
+      vout.value(sig, pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
-    // marimba: modal bank struck by a soft impulse
+    // marimba: three tuned bar modes (1 : 4 : 10) with their own decays, a
+    // soft mallet (a slower onset and fewer upper modes when soft) and a
+    // little felt thump
     SynthDef(\est_marimba, {
-      arg out, echoOut, verbOut, freq=261, amp=0.2, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
-      var ex  = LPF.ar(Decay.ar(Impulse.ar(0), 0.004, 0.5), (2500 + (bright * 5000)));
-      var sig = DynKlank.ar(`[
-        [freq, (freq * 3.93), (freq * 9.2)].min(14000),
-        [1, 0.22, 0.05],
-        [1.1, 0.35, 0.12]
-      ], ex);
-      var env = EnvGen.kr(Env.linen(0, dur + 1.3, 0.3), doneAction: 2);
-      sig = Pan2.ar(sig * env * amp * 0.7, pan);
-      Out.ar(out, sig);
-      Out.ar(echoOut, sig * echo);
-      Out.ar(verbOut, sig * verb);
+      arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var ks  = (freq / 261).clip(0.25, 8).pow(-0.5);
+      var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
+      var atk = (0.0055 - (h * 0.002)).max(0.0035);
+      var m1  = SinOsc.ar(freq) * EnvGen.ar(Env([0, 1, 0], [atk, (1.3 * ks)], [\sin, -5]), doneAction: 2);
+      var m2  = SinOsc.ar((freq * 3.99).min(16000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.32 * ks)], [\sin, -5])) * (0.05 + (0.15 * h));
+      var m3  = SinOsc.ar((freq * 9.9).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.08], [\sin, -5])) * (0.01 + (0.04 * h));
+      var th  = LPF.ar(WhiteNoise.ar, (freq * 1.5).min(4000)) * EnvGen.kr(Env([0, 1, 0], [0.004, 0.03], [\sin, -4])) * 0.2;
+      var sig = (m1 + m2 + m3 + th) * amp * 2.0;
+      vout.value(sig, pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
-    // pad: four detune-free tri+sine voices through a gentle low-pass.
-    // gate 0 releases it over `rel` s, so two pads crossfade.
-    SynthDef(\est_pad, {
+    // vibraphone: metal bar modes (1 : 4 : 10) with a long fundamental, a
+    // slow motor tremolo on the fundamental, 90 degrees apart left and right
+    // (the turning discs); damped a little after the note ends
+    SynthDef(\est_vibes, {
+      arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var ks   = (freq / 261).clip(0.25, 8).pow(-0.45);
+      var h    = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
+      var atk  = (0.006 - (h * 0.002)).max(0.0035);
+      var trem = SinOsc.kr(Rand(3.4, 4.0), [0, 0.5pi] + Rand(0, 2pi)) * 0.22;
+      var m1   = SinOsc.ar(freq) * EnvGen.ar(Env([0, 1, 0], [atk, (3.2 * ks)], [\sin, -4]));
+      var m2   = SinOsc.ar((freq * 4).min(16000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.7 * ks)], [\sin, -5])) * (0.05 + (0.16 * h));
+      var m3   = SinOsc.ar((freq * 10).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.12], [\sin, -5])) * (0.01 + (0.035 * h));
+      var damp = EnvGen.kr(Env([1, 1, 0], [((dur + 1.0).min(3.3 * ks)), 0.8], [0, -3]), doneAction: 2);
+      var up   = m2 + m3;
+      var g    = damp * amp * 1.64;
+      vout.value([((m1 * (1 + trem[0])) + up) * g, ((m1 * (1 + trem[1])) + up) * g], pan, out, echoOut, verbOut, echo, verb);
+    }).add;
+
+    // celesta / music box: small, high and sweet. a fundamental, a quieter
+    // octave and double octave, and a tiny strike glint
+    SynthDef(\est_celesta, {
+      arg out, echoOut, verbOut, freq=523, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var ks  = (freq / 261).clip(0.25, 8).pow(-0.4);
+      var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
+      var atk = 0.0035;
+      var m1  = SinOsc.ar(freq) * EnvGen.ar(Env([0, 1, 0], [atk, (1.5 * ks)], [\sin, -5]), doneAction: 2);
+      var m0  = SinOsc.ar((freq * 2).min(16000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.6 * ks)], [\sin, -5])) * 0.22;
+      var m2  = SinOsc.ar((freq * 4).min(16000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.3 * ks)], [\sin, -5])) * (0.04 + (0.12 * h));
+      var m3  = SinOsc.ar((freq * 9).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.05], [\sin, -5])) * (0.015 + (0.04 * h));
+      var sig = (m1 + m0 + m2 + m3) * amp * 1.82;
+      vout.value(sig, pan, out, echoOut, verbOut, echo, verb);
+    }).add;
+
+    // kalimba: a soft thumb pluck (a 1:1 FM blip for the body, falling in
+    // 80 ms) with the tine's short inharmonic shimmer (5.93) leaning to one side
+    SynthDef(\est_kalimba, {
+      arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var ks  = (freq / 261).clip(0.25, 8).pow(-0.5);
+      var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
+      var atk = 0.0035;
+      var bi  = EnvGen.kr(Env([(0.2 + (0.6 * h)), 0], [0.08], [-3]));
+      var m1  = SinOsc.ar(freq, SinOsc.ar(freq, 0, bi)) * EnvGen.ar(Env([0, 1, 0], [atk, (1.1 * ks)], [\sin, -5]), doneAction: 2);
+      var m2  = SinOsc.ar((freq * 5.93).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.14 * ks)], [\sin, -4])) * (0.06 + (0.18 * h));
+      var g   = amp * 3.11;
+      vout.value([(m1 + (m2 * 1.3)) * g, (m1 + (m2 * 0.7)) * g], pan, out, echoOut, verbOut, echo, verb);
+    }).add;
+
+    // pan flute / ocarina: a sine core with soft 2nd and 3rd harmonics, a
+    // gentle chiff, a quiet breath under it, vibrato after it settles; holds
+    // for the note's length
+    SynthDef(\est_flute, {
+      arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var atk  = (0.11 - (bright * 0.06)) * Rand(0.85, 1.15);
+      var env  = EnvGen.kr(Env([0, 1, 0.82, 0.82, 0], [atk, 0.25, (dur - atk - 0.25).max(0.01), 0.4], [\sin, -2, 0, -3]), doneAction: 2);
+      var vd   = EnvGen.kr(Env([0, 0, 1], [0.4, 1.0], [0, 2])) * 0.003;
+      var f    = freq * (1 + (SinOsc.kr(Rand(4.4, 5.0), Rand(0, 2pi)) * vd));
+      var core = SinOsc.ar(f) + (SinOsc.ar(f * 2) * (0.05 + (0.1 * bright))) + (SinOsc.ar(f * 3) * (0.04 + (0.06 * bright)));
+      var air  = BPF.ar(WhiteNoise.ar, (freq * 1.5).min(12000), 1.0) * ((667 / freq).sqrt * 0.3) * (0.15 + (EnvGen.kr(Env.perc(0.02, 0.1)) * (0.3 + (vel * 0.2))));
+      var sig  = (core + air) * env * amp * 0.64;
+      vout.value(sig, pan, out, echoOut, verbOut, echo, verb);
+    }).add;
+
+    // glass harmonica: a slow swell to a pure core, faint upper partials and
+    // a shine that grows in, a slow shimmer opposite left and right
+    SynthDef(\est_glass, {
+      arg out, echoOut, verbOut, freq=523, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var atk  = (0.3 - (bright * 0.16)) * Rand(0.9, 1.1);
+      var env  = EnvGen.kr(Env([0, 1, 0.85, 0], [atk, dur.max(0.2), 1.4], [\sin, -1, -4]), doneAction: 2);
+      var sh   = SinOsc.kr(Rand(0.6, 0.9), [0, pi]) * 0.05;
+      var core = SinOsc.ar(freq) + (SinOsc.ar(freq * 2) * (0.06 + (0.1 * bright))) + (SinOsc.ar((freq * 3).min(16000)) * (0.02 + (0.05 * bright)));
+      var shine = SinOsc.ar((freq * 4).min(16000)) * EnvGen.kr(Env([0, 1], [(0.5 + atk)])) * (0.03 * (0.5 + bright));
+      var sig  = (core + shine) * env * amp * 0.77;
+      vout.value([sig * (1 + sh[0]), sig * (1 + sh[1])], pan, out, echoOut, verbOut, echo, verb);
+    }).add;
+
+    // pads: four notes, gate 0 releases over `rel` s, so two pads crossfade
+    // (the `pad` command starts the next one at `atk` = pad_xfade). Every
+    // character keeps that contract; a GAIN per character matches them
+    // within 3 dB RMS on the same chord.
+
+    // warm: triangle + sine + a sub, each voice drifting a hair and
+    // breathing slowly, through a gentle moving low-pass
+    SynthDef(\est_pad_warm, {
       arg out, f1=130, f2=196, f3=293, f4=392, amp=0.08, bright=0.5, atk=4, rel=4, gate=1;
       var env = EnvGen.kr(Env.asr(atk, 1, rel, [2, -2]), gate, doneAction: 2);
-      var cut = (800 + (bright * 2700)) * (1 + (0.05 * SinOsc.kr(0.07, Rand(0, 2pi))));
+      var cut = (800 + (bright * 2700)) * (1 + (0.06 * SinOsc.kr(0.07, Rand(0, 2pi))));
       var sig = [f1, f2, f3, f4].collect { |f, i|
-        var v = (LFTri.ar(f) * 0.5) + (SinOsc.ar(f) * 0.5) + (SinOsc.ar((f * 0.5)) * 0.2);
-        Pan2.ar(v, [-0.5, -0.17, 0.17, 0.5][i]);
+        var d = f * (1 + (LFNoise2.kr(0.12) * 0.0006));
+        var v = (LFTri.ar(d) * 0.45) + (SinOsc.ar(f) * 0.5) + (SinOsc.ar(f * 0.5) * 0.18);
+        Pan2.ar(v * (1 + (LFNoise2.kr(0.09) * 0.12)), [-0.55, -0.18, 0.18, 0.55][i]);
       };
       sig = Mix(sig);
       sig = LPF.ar(LPF.ar(sig, cut), (cut * 1.5));
-      Out.ar(out, sig * env * amp);
+      Out.ar(out, sig * env * amp * 1.08);
     }).add;
 
+    // strings: soft analog strings. one saw per note, drifting slowly,
+    // through two gentle low-passes, then an ensemble of two slowly
+    // swaying delay taps (one per side)
+    SynthDef(\est_pad_strings, {
+      arg out, f1=130, f2=196, f3=293, f4=392, amp=0.08, bright=0.5, atk=4, rel=4, gate=1;
+      var env = EnvGen.kr(Env.asr(atk, 1, rel, [2, -2]), gate, doneAction: 2);
+      var cut = (650 + (bright * 1500)) * (1 + (0.05 * SinOsc.kr(0.05, Rand(0, 2pi))));
+      var sig = [f1, f2, f3, f4].collect { |f, i|
+        var v = Saw.ar(f * (1 + (LFNoise2.kr(0.15) * 0.0008)));
+        Pan2.ar(v, [-0.5, -0.17, 0.17, 0.5][i]);
+      };
+      sig = Mix(sig);
+      sig = LPF.ar(LPF.ar(sig, cut), (cut * 1.4));
+      sig = HPF.ar(sig, 100);
+      sig = (sig * 0.6) + (DelayC.ar(sig, 0.03, (0.012 + (SinOsc.kr([0.23, 0.29], [0, 1.6]) * 0.004))) * 0.6);
+      Out.ar(out, sig * env * amp * 2.82);
+    }).add;
+
+    // glass: a digital FM pad (1:2, the index drifting slowly) with a gentle
+    // double-octave shimmer that comes and goes on each note
+    SynthDef(\est_pad_glass, {
+      arg out, f1=130, f2=196, f3=293, f4=392, amp=0.08, bright=0.5, atk=4, rel=4, gate=1;
+      var env = EnvGen.kr(Env.asr(atk, 1, rel, [2, -2]), gate, doneAction: 2);
+      var sig = [f1, f2, f3, f4].collect { |f, i|
+        var idx = (0.35 + (bright * 0.4)) * (1 + (LFNoise2.kr(0.1) * 0.3));
+        var v = SinOsc.ar(f, SinOsc.ar((f * 2), Rand(0, 2pi), idx));
+        var sh = SinOsc.ar((f * 4).min(15000)) * (0.05 + (0.08 * bright)) * (0.5 + (0.5 * SinOsc.kr(Rand(0.08, 0.16), Rand(0, 2pi))));
+        Pan2.ar(v + sh, [-0.5, -0.17, 0.17, 0.5][i]);
+      };
+      sig = LPF.ar(Mix(sig), 7000);
+      Out.ar(out, sig * env * amp * 1.0);
+    }).add;
+
+    // air: a breathy choir. noise through very narrow band-passes at each
+    // note and its octave (level-matched across pitch), over a quiet sine core
+    SynthDef(\est_pad_air, {
+      arg out, f1=130, f2=196, f3=293, f4=392, amp=0.08, bright=0.5, atk=4, rel=4, gate=1;
+      var env = EnvGen.kr(Env.asr(atk, 1, rel, [2, -2]), gate, doneAction: 2);
+      var n   = WhiteNoise.ar;
+      var sig = [f1, f2, f3, f4].collect { |f, i|
+        var b1 = BPF.ar(n, f, 0.01) * (f.reciprocal.sqrt * 1000);
+        var b2 = BPF.ar(n, (f * 2).min(12000), 0.01) * ((f * 2).reciprocal.sqrt * 1000) * (0.2 + (bright * 0.3));
+        var v  = b1 + b2 + (SinOsc.ar(f) * 0.3);
+        Pan2.ar(v, [-0.55, -0.18, 0.18, 0.55][i]);
+      };
+      sig = LPF.ar(Mix(sig), (1500 + (bright * 2500)));
+      Out.ar(out, sig * env * amp * 1.12);
+    }).add;
+
+    // organ: soft sine drawbars (8', 4', 2 2/3'), each note swaying gently
+    // in the stereo field like a slow rotor
+    SynthDef(\est_pad_organ, {
+      arg out, f1=130, f2=196, f3=293, f4=392, amp=0.08, bright=0.5, atk=4, rel=4, gate=1;
+      var env = EnvGen.kr(Env.asr(atk, 1, rel, [2, -2]), gate, doneAction: 2);
+      var sig = [f1, f2, f3, f4].collect { |f, i|
+        var v = SinOsc.ar(f) + (SinOsc.ar(f * 2) * (0.25 + (0.2 * bright))) + (SinOsc.ar((f * 3).min(15000)) * (0.06 + (0.1 * bright)));
+        Pan2.ar(v, ([-0.5, -0.17, 0.17, 0.5][i] + (SinOsc.kr((0.4 + (i * 0.05)), Rand(0, 2pi)) * 0.15)).clip(-1, 1));
+      };
+      sig = LPF.ar(Mix(sig), 5000);
+      Out.ar(out, sig * env * amp * 0.83);
+    }).add;
     // pad mixer: level, plus sends
     SynthDef(\est_padmix, {
       arg in, out, echoOut, verbOut, level=1, echo=0.25, verb=0.5;
@@ -175,12 +349,15 @@ Engine_Estuary : CroneEngine {
       Out.ar(verbOut, sig * verb);
     }).add;
 
-    // pedal: low sine plus a quiet octave above. gate 0 lets it go over 2 s
+    // pedal: a low sine with a soft 2nd harmonic and a trace of the 3rd for
+    // warmth, a slow gentle swell in its level, an 80 ms onset. gate 0 lets
+    // it go over 2 s
     SynthDef(\est_pedal, {
       arg out, verbOut, freq=65, amp=0.2, dur=4, gate=1;
-      var env = EnvGen.kr(Env([0, 1, 0.8, 0], [0.06, dur, (dur * 0.3).max(1.5)], [2, -1, -3]), doneAction: 2);
-      var rel = EnvGen.kr(Env.asr(0, 1, 2.0, -3), gate, doneAction: 2);
-      var sig = (SinOsc.ar(freq) + (SinOsc.ar((freq * 2)) * 0.25)) * env * rel * amp;
+      var env = EnvGen.kr(Env([0, 1, 0.8, 0], [0.08, dur, (dur * 0.3).max(1.5)], [\sin, -1, -3]), doneAction: 2);
+      var rel = EnvGen.kr(Env.asr(0.01, 1, 2.0, -3), gate, doneAction: 2);
+      var br  = 1 + (SinOsc.kr(0.11, Rand(0, 2pi)) * 0.04);
+      var sig = (SinOsc.ar(freq) + (SinOsc.ar((freq * 2)) * 0.22) + (SinOsc.ar((freq * 3)) * 0.04)) * env * rel * br * amp;
       sig = sig ! 2;
       Out.ar(out, sig);
       Out.ar(verbOut, sig * 0.25);
@@ -336,6 +513,7 @@ Engine_Estuary : CroneEngine {
       \motif_level -> [\st, \motif_level],
       \pad_level -> [\padmix, \level],
       \pad_xfade -> [\st, \pad_xfade],
+      \pad_sound -> [\st, \pad_sound],
       \pedal_level -> [\st, \pedal_level],
       \bed_level -> [\bed, \trim],
       \swell_level -> [\swell, \trim],
@@ -346,11 +524,11 @@ Engine_Estuary : CroneEngine {
     // ------------------------------------------------------------- commands
 
     this.addCommand(\note, "fffffff", { |msg|
-      var def = [\est_rhodes, \est_bell, \est_sine, \est_marimba].clipAt(msg[1].asInteger - 1);
+      var def = voiceDefs.clipAt(msg[1].asInteger - 1);
       var send = msg[7].clip(0, 1);
       Synth(def, [
         \out, mainBus.index, \echoOut, echoBus.index, \verbOut, verbBus.index,
-        \freq, msg[2].midicps, \amp, ((msg[3].clip(0, 1) * 0.2) * st[\motif_level]),
+        \freq, msg[2].midicps, \amp, ((msg[3].clip(0, 1) * 0.2) * st[\motif_level]), \vel, msg[3].clip(0, 1),
         \dur, msg[4].max(0.05), \pan, msg[5].clip(-1, 1), \bright, msg[6].clip(0, 1),
         \echo, (send * 0.7), \verb, (0.1 + (send * 0.8))
       ], voiceGroup);
@@ -361,7 +539,7 @@ Engine_Estuary : CroneEngine {
       var xf = st[\pad_xfade].max(0.1);
       var f = msg[1..4].collect(_.midicps);
       if(old.notNil, { old.set(\rel, xf); old.set(\gate, 0) });
-      padSynth = Synth(\est_pad, [
+      padSynth = Synth(padDefs.clipAt(st[\pad_sound].asInteger - 1), [
         \out, padBus.index, \f1, f[0], \f2, f[1], \f3, f[2], \f4, f[3],
         \atk, xf, \rel, xf, \amp, 0.06, \bright, 0.45
       ], voiceGroup);
