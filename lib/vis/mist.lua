@@ -20,7 +20,7 @@ return function(K)
   M.incidents = {{"rowboat", 26}, {"swan", 22}, {"geese", 12}}
 
   local WL = 38
-  local CLEAR_MAX = 6
+  local CLEAR_MAX = 8
   local clears
 
   -- the far shore: a low line of land with a few trees, very faint
@@ -39,9 +39,11 @@ return function(K)
   function M.clear() clears = {} end
 
   function M.note(slot, midi)
+    -- (while the fog already holds as many open patches as it can, a note
+    -- waits its turn rather than snapping an older patch shut)
+    if #clears >= CLEAR_MAX then return end
     local x = K.px(midi)
     clears[#clears + 1] = {x = x, y = WL + 4 + (1 - K.pu(midi)) * 12, t0 = K.T, slot = slot}
-    if #clears > CLEAR_MAX then table.remove(clears, 1) end
   end
 
   -- each kind of thing opens its own shape of clear patch: half width, half height
@@ -52,7 +54,7 @@ return function(K)
     local o = 0
     for _, c in ipairs(clears) do
       local age = K.T - c.t0
-      local a = ease(age / 0.8) * (1 - ease((age - 4) / 3))
+      local a = ease(age / 1.4) * (1 - ease((age - 4) / 3))
       if a > 0 then
         local sh = SHAPE[c.slot] or SHAPE[1]
         local dx, dy = (x - c.x) / sh[1], (y - c.y + 6) / sh[2]
@@ -72,9 +74,9 @@ return function(K)
     local T = K.T
     local bloom, breath, sw = K.bloom, K.breath, K.sw_disp
     local hi, mid, nat, lo = A[K.HI], A[K.MID], A[K.NAT], A[K.LO]
-    -- the sun after a moment: eases in over ~1.5 s, out over the last 3.5
+    -- the sun after a moment: eases in over ~2.5 s, out over the last 3.5
     local age = K.moment_age
-    local sun = ease(clamp(age / 1.5, 0, 1)) * ease(clamp((14 - age) / 3.5, 0, 1))
+    local sun = ease(clamp(age / 2.5, 0, 1)) * ease(clamp((14 - age) / 3.5, 0, 1))
     -- density: thicker with out_lo and the water sounds, a swell rolls more in,
     -- the bloom thins it a little, the sun burns it back while it shines
     local dens = clamp(0.3 + 0.4 * lo + 0.3 * nat + 0.35 * sw - 0.25 * sun - 0.1 * bloom, 0.12, 0.75)
@@ -125,7 +127,7 @@ return function(K)
     for i = #clears, 1, -1 do
       local c = clears[i]
       local cage = T - c.t0
-      local a = ease(cage / 0.8) * (1 - ease((cage - 4) / 3))
+      local a = ease(cage / 1.4) * (1 - ease((cage - 4) / 3))
       if cage > 7 then table.remove(clears, i)
       elseif a > 0.02 then
         local lv = 6.5 * a

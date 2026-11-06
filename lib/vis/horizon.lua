@@ -69,7 +69,10 @@ return function(K)
   -- a note catches the light at its pitch; the motif decides what lights
   function M.note(slot, midi)
     marks[#marks + 1] = {slot = slot, x = K.px(midi), u = K.pu(midi), t0 = K.T}
-    while #marks > MARK_MAX do table.remove(marks, 1) end
+    if #marks > MARK_MAX then
+      -- (the oldest goes once it has nearly faded; till then a new note waits)
+      if K.T - marks[1].t0 > 3.5 then table.remove(marks, 1) else marks[#marks] = nil end
+    end
   end
 
   function M.draw(S)

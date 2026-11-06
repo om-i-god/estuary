@@ -84,7 +84,10 @@ return function(K)
     local c = clamp((x - 64) / rx, -1, 1)
     local a = math.acos(c) * (K.pu(midi) > 0.5 and -1 or 1)
     marks[#marks + 1] = {slot = slot, a = a, t0 = K.T}
-    while #marks > MARK_MAX do table.remove(marks, 1) end
+    if #marks > MARK_MAX then
+      -- (the oldest goes once it has nearly faded; till then a new note waits)
+      if K.T - marks[1].t0 > 3.5 then table.remove(marks, 1) else marks[#marks] = nil end
+    end
   end
 
   -- a leaf lying along its heading: a bright midrib and a dimmer blade
