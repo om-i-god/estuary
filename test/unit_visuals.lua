@@ -596,6 +596,7 @@ for th, name in ipairs(NAMES) do
   test("visuals " .. name .. " incidents show", function()
     env()
     local VIS = include("lib/visuals"); VIS.init()
+    VIS.draw(th, mkS(), 1 / FPS)
     local list = VIS._probe().kinds
     assert(list and #list >= 2, "fewer than 2 kinds of incident")
     local base = react_run(th)
