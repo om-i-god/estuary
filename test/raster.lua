@@ -47,9 +47,18 @@ function S.line(x, y)
   p[#p + 1] = {x, y}
 end
 function S.fill()
+  local buf, lv = R.buf, R.lv
   for _, r in ipairs(R.rects) do
-    for yy = math.floor(r[2]), math.floor(r[2] + r[4]) - 1 do
-      for xx = math.floor(r[1]), math.floor(r[1] + r[3]) - 1 do plot(xx, yy, R.lv) end
+    -- the same pixels plot() would set, clipped once per rect
+    local x0, x1 = math.floor(r[1]), math.floor(r[1] + r[3]) - 1
+    local y0, y1 = math.floor(r[2]), math.floor(r[2] + r[4]) - 1
+    if x0 < 0 then x0 = 0 end
+    if x1 > 127 then x1 = 127 end
+    if y0 < 0 then y0 = 0 end
+    if y1 > 63 then y1 = 63 end
+    for yy = y0, y1 do
+      local row = yy * 128
+      for xx = x0, x1 do buf[row + xx] = lv end
     end
   end
   for _, p in ipairs(R.pts) do plot(p[1], p[2], R.lv) end

@@ -418,6 +418,216 @@ test("visuals onsets ease in", function()
   end
 end)
 
+------------------------------------------------------------------------
+-- v4: the reactivity matrix, pitch mapping and incidents
+------------------------------------------------------------------------
+
+-- a controlled scene for the matrix: steady ears, a steady bloom, the
+-- motif clock running, and nothing else unless the variant adds it. every
+-- variant changes exactly one input from the base run
+local RF = 200                    -- frames per matrix run (10 s)
+local BASE_EARS = {out_amp = 0.3, out_lo = 0.3, out_mid = 0.3, out_hi = 0.3, nat_amp = 0.3}
+local function react_run(th, v)
+  v = v or {}
+  env()
+  local VIS = include("lib/visuals")
+  VIS.init()
+  local S = mkS()
+  S.bloom = 0.5; S.section = "flow"
+  S.sounding = {true, false, true, false}
+  S.gain.motif1, S.gain.motif3 = 0.7, 0.6
+  local frames, t, next_step = {}, 0, 0
+  for f = 1, RF do
+    t = t + 1 / FPS
+    while t >= next_step do
+      S.step = S.step + 1
+      if v.bar and S.step % 8 == 0 then VIS.event("bar", S) end
+      next_step = next_step + 60 / S.tempo / 2
+    end
+    if v.note and f >= 60 and f % 10 == 0 then VIS.event("note", v.slot or 1, v.midi or 67, 1.2) end
+    if v.chord and f == 60 then S.chord = CHORDS[3]; VIS.event("chord", S) end
+    if v.bloom and f >= 40 then S.bloom = math.min(1, 0.5 + (f - 40) / 60 * 0.5) end
+    if v.swell and f >= 40 and f % 8 == 0 then
+      local lv = math.min(1, (f - 40) / 60)
+      VIS.event("swell", lv < 1 and "rising" or "held", lv)
+    end
+    if v.moment and f == 60 then VIS.event("moment", "passing") end
+    for name, x in pairs(BASE_EARS) do VIS.audio(name, (v.ear == name) and 0.9 or x) end
+    screen.clear()
+    VIS.draw(th, S, 1 / FPS)
+    frames[f] = copybuf()
+  end
+  return frames
+end
+
+local function mean_diff(a, b, f0)
+  local d = 0
+  for i = f0, RF do d = d + bufdiff(a[i], b[i]) end
+  return d / (RF - f0 + 1)
+end
+
+-- where a change sits on screen: the centroid of |a - b| over the frames
+local function centroid(a, b, f0)
+  local sx, sy, sw = 0, 0, 0
+  for i = f0, RF do
+    local fa, fb = a[i], b[i]
+    for p = 0, 8191 do
+      local d = math.abs(fa[p] - fb[p])
+      if d > 0 then sx, sy, sw = sx + (p % 128) * d, sy + (p // 128) * d, sw + d end
+    end
+  end
+  if sw == 0 then return 64, 32, 0 end
+  return sx / sw, sy / sw, sw
+end
+
+-- each input alone must move the picture by more than this (mean |level
+-- change| per pixel over the frames after the input changes). v3's
+-- weakest response, koi out_hi, cleared 0.01 by 0.011
+local REACT_MIN = 0.03
+local INPUTS = {
+  {"note", {note = true}, 61}, {"chord", {chord = true}, 61}, {"bar", {bar = true}, 21},
+  {"bloom", {bloom = true}, 41}, {"swell", {swell = true}, 41}, {"moment", {moment = true}, 61},
+  {"out_amp", {ear = "out_amp"}, 21}, {"out_lo", {ear = "out_lo"}, 21}, {"out_mid", {ear = "out_mid"}, 21},
+  {"out_hi", {ear = "out_hi"}, 21}, {"nat_amp", {ear = "nat_amp"}, 21},
+}
+local MATRIX = {}                 -- theme -> input -> margin, for the report
+
+for th, name in ipairs(NAMES) do
+  test("visuals " .. name .. " reactivity matrix", function()
+    local base = react_run(th)
+    local again = react_run(th)
+    assert(mean_diff(base, again, 1) == 0, "two identical runs differ")
+    local row, low, fails = {}, math.huge, {}
+    for _, inp in ipairs(INPUTS) do
+      local d = mean_diff(base, react_run(th, inp[2]), inp[3])
+      row[inp[1]] = d
+      low = math.min(low, d)
+      if d <= REACT_MIN then fails[#fails + 1] = string.format("%s %.4f", inp[1], d) end
+    end
+    MATRIX[name] = row
+    if REPORT then
+      local s = {}
+      for _, inp in ipairs(INPUTS) do s[#s + 1] = string.format("%s %.3f", inp[1], row[inp[1]]) end
+      print(string.format("matrix %-10s low %.3f | %s", name, low, table.concat(s, "  ")))
+    end
+    assert(#fails == 0, "barely reacts to: " .. table.concat(fails, ", "))
+  end)
+end
+
+-- notes in different slots leave different marks; a low and a high note in
+-- the same slot land in different places
+for th, name in ipairs(NAMES) do
+  test("visuals " .. name .. " slots and pitch", function()
+    local base = react_run(th)
+    local by = {}
+    for s = 1, 4 do by[s] = react_run(th, {note = true, slot = s, midi = 67}) end
+    local lowpair = math.huge
+    for a = 1, 3 do
+      for b = a + 1, 4 do
+        local d = mean_diff(by[a], by[b], 61)
+        lowpair = math.min(lowpair, d)
+        assert(d > REACT_MIN * 0.5, string.format("slots %d and %d look alike: %.4f", a, b, d))
+      end
+    end
+    local far = math.huge
+    for _, s in ipairs({1, 3}) do
+      local lo = react_run(th, {note = true, slot = s, midi = 57})
+      local hi = react_run(th, {note = true, slot = s, midi = 86})
+      local lx, ly = centroid(base, lo, 61)
+      local hx, hy = centroid(base, hi, 61)
+      local d = math.sqrt((lx - hx) ^ 2 + (ly - hy) ^ 2)
+      far = math.min(far, d)
+      assert(d > 12, string.format("slot %d: low and high notes land %.1f px apart", s, d))
+    end
+    if REPORT then print(string.format("pitch %-10s slot pairs >= %.3f  low/high >= %.1f px", name, lowpair, far)) end
+  end)
+end
+
+-- incidents: over 20 simulated minutes each place shows at least two kinds
+-- of small happening, one at a time, each easing in and out. drawn into a
+-- counting screen (the raster is too slow for 20 minutes x 12)
+local NULLS = setmetatable({}, {__index = function() return function() end end})
+for th, name in ipairs(NAMES) do
+  test("visuals " .. name .. " incidents", function()
+    env()
+    local VIS = include("lib/visuals")
+    VIS.init()
+    assert(VIS._probe, "no incident probe")
+    screen = NULLS
+    local S = mkS(); SCEN.mid.setup(S)
+    local DTI = 0.1
+    local kinds, n, prev_env, prev_name = {}, 0, 0, nil
+    local max_rate, onset_max, steps, k = 0, 0, 0, 0
+    for f = 1, math.floor(20 * 60 / DTI) do
+      steps = steps + DTI
+      while steps >= 60 / S.tempo / 2 do
+        steps = steps - 60 / S.tempo / 2
+        S.step = S.step + 1
+        if S.step % 8 == 0 then VIS.event("bar", S) end
+        if math.random() < 0.3 then VIS.event("note", math.random(1, 4), 55 + math.random(0, 30), 1) end
+        k = k + 1
+        if k % 64 == 0 then S.chord = CHORDS[(k // 64) % 4 + 1]; VIS.event("chord", S) end
+      end
+      for nm, v in pairs(SCEN.mid.audio(f * DTI)) do VIS.audio(nm, v) end
+      VIS.draw(th, S, DTI)
+      local p = VIS._probe()
+      assert(p.active <= 1, "two incidents at once")
+      local e = p.incident and p.env or 0
+      if p.incident and p.incident ~= prev_name then
+        kinds[p.incident] = true; n = n + 1
+        onset_max = math.max(onset_max, e)
+      end
+      max_rate = math.max(max_rate, math.abs(e - prev_env) / DTI)
+      prev_env, prev_name = e, p.incident
+    end
+    screen = RAST.screen
+    local nk = 0
+    for _ in pairs(kinds) do nk = nk + 1 end
+    if REPORT then print(string.format("incidents %-10s %d kinds, %d in 20 min, env rate <= %.2f/s", name, nk, n, max_rate)) end
+    assert(nk >= 2, nk .. " kinds of incident in 20 minutes")
+    assert(n <= 40, n .. " incidents in 20 minutes: not rare")
+    assert(onset_max < 0.15, string.format("an incident starts at %.2f", onset_max))
+    assert(max_rate <= 0.75, string.format("an incident eases at %.2f / s", max_rate))
+  end)
+end
+
+-- and each kind of incident can be seen: forced on, it changes the picture
+for th, name in ipairs(NAMES) do
+  test("visuals " .. name .. " incidents show", function()
+    env()
+    local VIS = include("lib/visuals"); VIS.init()
+    local list = VIS._probe().kinds
+    assert(list and #list >= 2, "fewer than 2 kinds of incident")
+    local base = react_run(th)
+    local low = math.huge
+    for i = 1, #list do
+      -- a run like the base one, with incident i forced on at frame 20
+      local frames
+      do
+        env()
+        local V = include("lib/visuals"); V.init()
+        local S = mkS(); S.bloom = 0.5; S.section = "flow"
+        S.sounding = {true, false, true, false}
+        S.gain.motif1, S.gain.motif3 = 0.7, 0.6
+        frames = {}
+        local t, next_step = 0, 0
+        for f = 1, RF do
+          t = t + 1 / FPS
+          while t >= next_step do S.step = S.step + 1; next_step = next_step + 60 / S.tempo / 2 end
+          if f == 20 then V._incident(i) end
+          for nm, x in pairs(BASE_EARS) do V.audio(nm, x) end
+          screen.clear(); V.draw(th, S, 1 / FPS)
+          frames[f] = copybuf()
+        end
+      end
+      local d = mean_diff(base, frames, 21)
+      low = math.min(low, d)
+      assert(d > 0.005, string.format("incident %s barely shows: %.4f", list[i], d))
+    end
+    if REPORT then print(string.format("incshow %-10s %s  low %.3f", name, table.concat(list, ","), low)) end
+  end)
+end
+
 -- for ad-hoc scripts (contact sheets, per-frame diffs): dofile this file
 -- with test() stubbed and call VIS_HARNESS.run(theme, scenario, {keep = true})
-VIS_HARNESS = {run = run, bufdiff = bufdiff}
+VIS_HARNESS = {run = run, bufdiff = bufdiff, react_run = react_run}
