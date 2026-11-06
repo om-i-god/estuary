@@ -140,7 +140,7 @@ return function(K)
       end
     end
     if r.head and tx then
-      local hl = math.min(11, base_l + 1 + nod * 3 + A[K.HI] * 3.5 * math.max(0, sin(K.T * 6 + r.ph * 3)))
+      local hl = math.min(11, base_l + 1 + nod * 3 + A[K.HI] * 4.5 * math.max(0, sin(K.T * 6 + r.ph * 3)))
       put(hl, tx, ty - 4, L.w == 2 and 2 or 1, L.w == 2 and 5 or 3)
       if L.w == 2 then put(base_l, tx + l * 0.12 + 0.5, ty - 7, 1, 3) end
     end
@@ -158,7 +158,7 @@ return function(K)
     -- open sky: a low glow hugging the bank, warmer with the bloom and
     -- breathing on the bar, a few first stars above
     K.gradient(WL - 12, WL - 1, function(y)
-      return (0.6 + 0.45 * bloom + 1.3 * breath + 0.9 * K.chord_glow) * clamp((y - WL + 13) / 13, 0, 1) ^ 1.5
+      return (0.6 + 0.45 * bloom + 1.8 * breath + 0.9 * K.chord_glow) * clamp((y - WL + 13) / 13, 0, 1) ^ 1.5
     end, bank)
     for i, s in ipairs(STARS) do
       put((1.4 - 0.5 * bloom) * (1 + 0.5 * sin(T * 0.5 + i * 2.1)), s[1], s[2], 1, 1)
@@ -169,7 +169,7 @@ return function(K)
       if m and p > 0.02 then
         local x = K.cx(m) + K.drift_x * 0.02
         local y = clamp(26 - (m - 36) / 40 * 22, 3, 30)
-        local l = (5 + 2 * K.chord_glow) * p * (1.1 - 0.3 * bloom)
+        local l = (6 + 2.5 * K.chord_glow) * p * (1.1 - 0.3 * bloom)
         put(l, x, y, 1, 1)
         put(l * 0.5, x - 1, y, 1, 1); put(l * 0.5, x + 1, y, 1, 1); put(l * 0.5, x, y - 1, 1, 1); put(l * 0.5, x, y + 1, 1, 1)
         put(l * 0.25, x - 3, y, 2, 1); put(l * 0.25, x + 2, y, 2, 1); put(l * 0.25, x, y - 3, 1, 2); put(l * 0.25, x, y + 2, 1, 2)
@@ -178,7 +178,7 @@ return function(K)
         -- and the glow over the bank is warmer under it
         for yy = WL - 10, WL - 1 do
           local hw = 15 * (1 - (WL - yy) / 13)
-          K.dither_row((2.1 + 1.2 * K.chord_glow) * p * (1 - (WL - yy) / 12), yy, bank, math.max(0, floor(x - hw)), math.min(128, floor(x + hw)))
+          K.dither_row((2.6 + 1.4 * K.chord_glow) * p * (1 - (WL - yy) / 12), yy, bank, math.max(0, floor(x - hw)), math.min(128, floor(x + hw)))
         end
       end
     end
@@ -225,7 +225,7 @@ return function(K)
       else
         local e = ease(age / 0.15) * (1 - age / 3)
         if r.small then
-          K.ring(r.x, r.y, 1.5 + age * 4, 0.3, 6 * e, 16, 0, WL, 64)
+          K.ring(r.x, r.y, 1.5 + age * 4.5, 0.3, 7.5 * e, 18, 0, WL, 64)
           K.ring(r.x, r.y + 1, 1 + age * 2.5, 0.3, 4 * e, 10, 0, WL, 64)
         else
           K.ring(r.x, r.y, 1.5 + age * 5, 0.35, 6 * e, 18, 0, WL, 64)

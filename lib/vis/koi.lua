@@ -21,7 +21,8 @@ return function(K)
   M.incidents = {{"frog", 12}, {"leaf", 20}, {"dragonfly", 12}}
 
   local RING_MAX = 8
-  local GLINTS = K.scatter(90, 4, 7, 124, 57, 63)
+  local stone_body, stone_edge
+  local GLINTS = K.scatter(72, 4, 7, 124, 57, 63)
   local rings, flick, pads, stones, petals
 
   function M.init()
@@ -47,6 +48,21 @@ return function(K)
       stones[#stones + 1] = {x = x, w = w, top = false, h = 2 + floor(3 * K.hash(k, 54)), lv = 1.5 + K.hash(k, 55)}
       x = x + w + 1
     end
+    -- the stones never move: baked, their bodies and their lit inner edges
+    stone_body = K.bake(function(rec)
+      for _, st in ipairs(stones) do
+        local y0 = st.top and 0 or 64 - st.h
+        for r = 0, st.h - 1 do
+          local inset = (st.top and r == st.h - 1 or (not st.top and r == 0))
+          if not inset then rec(st.lv, st.x, y0 + r, st.w, 1) end
+        end
+      end
+    end)
+    stone_edge = K.bake(function(rec)
+      for _, st in ipairs(stones) do
+        rec(st.lv + 0.8, st.x + 1, st.top and st.h - 1 or 64 - st.h, st.w - 2, 1)
+      end
+    end)
   end
 
   function M.clear() rings, petals = {}, {}; flick = {0, 0, 0, 0} end
@@ -85,17 +101,6 @@ return function(K)
 
   local function sample(u, v) return 4 + u * 120, 7 + v * 50 end
 
-  local function stone(s, sub)
-    local y0 = s.top and 0 or 64 - s.h
-    for r = 0, s.h - 1 do
-      local inset = (s.top and r == s.h - 1 or (not s.top and r == 0)) and 1 or 0
-      local l = s.lv + (inset == 1 and 0.8 + K.breath * 1.2 or 0) + 0.5 * K.bloom + K.breath * 0.9
-      -- a raised pond covers the stones' inner edges
-      if inset == 1 and sub > 0.3 then l = l * (1 - 0.5 * sub) end
-      put(l, s.x + inset, y0 + r, s.w - 2 * inset, 1)
-    end
-  end
-
   -- a lily pad from above: a disc with a notch toward its stem, a lit rim
   local function pad(p, l, rim)
     local r = p.r
@@ -119,11 +124,13 @@ return function(K)
     local hi, mid, nat, lo = A[K.HI], A[K.MID], A[K.NAT], A[K.LO]
     local bloom, breath, sw = K.bloom, K.breath, K.sw_disp
     K.blit(bed, 1 + 0.4 * bloom)
-    for _, s in ipairs(stones) do stone(s, sw) end
+    -- (a raised pond covers the stones' inner edges)
+    K.blit(stone_body, 1 + 0.3 * bloom + 0.5 * breath)
+    K.blit(stone_edge, (1 + 0.3 * bloom + 0.7 * breath) * (1 - 0.4 * clamp((sw - 0.3) / 0.7, 0, 1)))
     -- the water: sky light moving faintly on it, breathing on the bar; out_lo
     -- rolls broad slow bands of light across
     K.surface(0, 6, 128, 58, 1 + breath * 2.6 + 0.3 * bloom + nat * 1.2, 11 - floor(nat * 3), 5, 3)
-    K.twinkle(GLINTS, hi, 7)
+    K.twinkle(GLINTS, hi, 8.5)
     if lo > 0.05 then
       for b = 0, 1 do
         local bx = (T * 6 + b * 64 + K.drift_x * 0.3) % 170 - 20
@@ -142,8 +149,8 @@ return function(K)
     -- the stream running in at the bottom-left corner: as much as the
     -- water sounds bring
     if nat > 0.03 then
-      for k = 0, 9 do
-        local u = ((T * 0.6 + k / 10) % 1)
+      for k = 0, 6 do
+        local u = ((T * 0.6 + k / 7) % 1)
         local x, y = 2 + u * 34, 57 - u * 12
         put(nat * (5 - u * 3), x + sin(T * 3 + k) * 1.5, y, 3, 1)
         put(nat * (3 - u * 2), x + 2 + sin(T * 2.4 + k) * 1.5, y + 2, 2, 1)
@@ -166,7 +173,7 @@ return function(K)
       local rock = lo * 1.5 * sin(T * 0.9 + p.ph)
       local q = {x = p.x + rock, y = p.y + lo * sin(T * 0.7 + p.ph), r = p.r}
       pad(q, 2 + 0.8 * bloom + 1.2 * K.chord_glow, 1)
-      put(2 + 5 * hi * math.max(0, sin(T * 5 + i * 2)), q.x - p.r * 0.7, q.y - p.r * 0.6, 2, 1)   -- light on its rim
+      put(2 + 7 * hi * math.max(0, sin(T * 5 + i * 2)), q.x - p.r * 0.7, q.y - p.r * 0.6, 3, 1)   -- light on its rim
       local fl = ease((bloom - 0.3) / 0.25)                      -- a flower as the bloom opens
       if i == 1 and p.r > 3 and fl > 0.02 then put((4 + 3 * bloom) * fl, q.x - 1, q.y - 1, 2, 2) end
     end
@@ -177,7 +184,7 @@ return function(K)
       if age > 3.2 then table.remove(rings, i)
       else
         local rad = 1.5 + age * 5.5
-        local lv = 6.5 * (1 - age / 3.2) * ease(age / 0.15) * (0.6 + 0.6 * A[K.AMP])
+        local lv = 8.5 * (1 - age / 3.2) * ease(age / 0.15) * (0.6 + 0.6 * A[K.AMP])
         local n = math.max(8, floor(rad * 1.8))
         K.ring(r.x, r.y, rad, 0.9, lv, n)
         if r.kind == 2 then K.ring(r.x, r.y, rad * 0.55, 0.9, lv * 0.8, math.max(6, n // 2)) end
@@ -209,7 +216,7 @@ return function(K)
           local sx, sy = path(i, th - k * d - 0.01)
           local nx, ny = wy - sy, sx - wx
           local nn = math.max(1e-6, math.sqrt(nx * nx + ny * ny))
-          local l = (on and 1.8 or 0.9) * (1 - (k - 13) / (wl - 10)) * (1 + 2.2 * mid) + hi * 1.5
+          local l = (on and 1.8 or 0.9) * (1 - (k - 13) / (wl - 10)) * (1 + 2.8 * mid) + hi * 1.5
           local o = 1 + (k - 13) * 0.3
           put(l, wx + nx / nn * o, wy + ny / nn * o, 1, 1)
           put(l, wx - nx / nn * o, wy - ny / nn * o, 1, 1)

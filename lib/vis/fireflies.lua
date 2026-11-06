@@ -22,7 +22,7 @@ return function(K)
   M.incidents = {{"bat", 10}, {"owl", 12}, {"boat", 24}}
 
   local WL = 45
-  local FLY_MAX = 20
+  local FLY_MAX = 16
   local AMBIENT = 12
   local PLOP_MAX = 6
   local flies, plops, plop_acc
@@ -43,9 +43,9 @@ return function(K)
     end
   end)
   -- the grass along the near edge, where the crickets are
-  local GRASS = K.scatter(60, 0, 57, 128, 64, 80)
+  local GRASS = K.scatter(40, 0, 57, 128, 64, 80)
   -- faint stars out_hi brings out between the bright ones
-  local FAINT = K.scatter(50, 2, 1, 126, 20, 81)
+  local FAINT = K.scatter(36, 2, 1, 126, 20, 81)
   -- cattails close by: {x, height, phase}
   local CATTAILS = {{4, 17, 0.4}, {9, 13, 2.1}, {120, 15, 1.2}, {125, 11, 3.3}}
 
@@ -87,7 +87,7 @@ return function(K)
       f = {x = x, y = 18 + (1 - K.pu(midi)) * 20, ph = K.rnd() * 6, amb = false}
       flies[#flies + 1] = f
     end
-    f.t0, f.pk, f.kind = K.T, 9 + 3 * (1 - (slot - 1) / 4), slot
+    f.t0, f.pk, f.kind = K.T, 11 + 2 * (1 - (slot - 1) / 4), slot
     if slot == 2 and #flies < FLY_MAX then
       -- a second answers it a little way off
       flies[#flies + 1] = {x = x + 5, y = f.y - 3, ph = K.rnd() * 6, amb = false, t0 = K.T + 0.4, pk = f.pk, kind = 2}
@@ -126,10 +126,11 @@ return function(K)
     local ma = K.moment_age
     if ma < 18 then
       local e = ease(ma / 3) * (1 - ease((ma - 12) / 6))
-      K.blit(milky, 2.2 * e)
+      K.blit(milky, 3 * e)
       for k = 0, 8 do
         local x = k * 16 + 4
-        K.dither_row(0.6 * e, floor(3 + (x / 128) * 16 + sin(k) * 2), nil, x, x + 14)
+        K.dither_row(0.9 * e, floor(3 + (x / 128) * 16 + sin(k) * 2), nil, x, x + 14)
+        K.dither_row(0.6 * e, floor(4 + (x / 128) * 16 + sin(k) * 2), nil, x + 2, x + 12)
       end
     end
     -- reeds at the water's edge, faint against the dark trees, swaying with
@@ -166,7 +167,7 @@ return function(K)
     end
     -- frogs and crickets with the water sounds: plops on the water, a
     -- shimmer in the near grass
-    plop_acc = plop_acc + nat * 2.5 * DTS
+    plop_acc = plop_acc + nat * 4 * DTS
     if plop_acc >= 1 then plop_acc = plop_acc - 1; plop(4 + K.rnd() * 120, WL + 3 + K.rnd() * 14, 3.5 + nat * 2) end
     for i = #plops, 1, -1 do
       local p = plops[i]
@@ -174,14 +175,14 @@ return function(K)
       if age > 2.5 then table.remove(plops, i)
       else
         local e = ease(age / 0.12) * (1 - age / 2.5)
-        K.ring(p.x, p.y, 1 + age * 5, 0.35, p.lv * e, 16, 0, WL, 64)
+        K.ring(p.x, p.y, 1 + age * 5, 0.35, p.lv * e, 11, 0, WL, 64)
         if age < 0.3 then put(p.lv * 1.2, p.x, p.y - 2 - age * 6, 1, 1) end
       end
     end
     if nat > 0.03 then
       for i = 1, #GRASS, 2 do
         local w = sin(T * 3.1 + i * 1.9) * sin(T * 1.7 + i)
-        if w > 0.3 - nat * 0.5 then put(1.5 + 3 * nat * w, GRASS[i], GRASS[i + 1], 2, 1) end
+        if w > 0.3 - nat * 0.6 then put(1.5 + 4 * nat * w, GRASS[i], GRASS[i + 1], 2, 1) end
       end
     end
     -- the chord's swarms: three dim fireflies circling each tone's place
@@ -214,8 +215,8 @@ return function(K)
       if f.amb and age < 6 then lit = lit_of(f, age) end
       -- the ambient ones glow up together on the bar
       -- (out_amp wakes more of them)
-      local awake = f.amb and clamp(4 + 9 * A[K.AMP] - f.n, 0, 1) or 0
-      local base = f.amb and (1.5 + 1.2 * (0.5 + 0.5 * sin(T * 0.8 + f.ph)) + 2.5 * breath) * awake * (0.8 + 0.6 * A[K.AMP]) or 0
+      local awake = f.amb and clamp(3 + 11 * A[K.AMP] - f.n, 0, 1) or 0
+      local base = f.amb and (1.5 + 1.2 * (0.5 + 0.5 * sin(T * 0.8 + f.ph)) + 2.5 * breath) * awake * (0.7 + 0.9 * A[K.AMP]) or 0
       local tw = hi * 2.5 * math.max(0, sin(T * 4 + f.ph * 5))
       local lv = math.max(base, lit) + ((lit > 0.5 or f.amb) and tw or 0)
       if not f.amb and age >= 6 then

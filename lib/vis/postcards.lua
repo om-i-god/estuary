@@ -153,7 +153,7 @@ return function(K)
     -- the moment's bird and the incident cloud move along the whole estuary:
     -- x along the four windows' strip
     local bird_x = K.moment_age < 12 and (-4 + K.moment_age / 12 * 136) or nil
-    local bird_e = bird_x and ease(K.moment_age / 1) * ease((12 - K.moment_age) / 1.5) or 0
+    local bird_e = bird_x and ease(K.moment_age / 1.5) * ease((12 - K.moment_age) / 1.5) or 0
     local cloud_x = inc and inc.name == "cloud" and (-20 + inc.u * 168) or nil
     for i = 1, 4 do
       local x0, y0 = 6 + (i - 1) * 31, CARD_Y
@@ -164,9 +164,9 @@ return function(K)
       local f, glow = cf[i], K.slot_glow[i]
       local a = 0
       local age = T - ans[i]
-      if age < 3 then a = ease(age / 0.2) * (1 - ease((age - 0.4) / 2.6)) end
+      if age < 3.2 then a = ease(age / 0.45) * (1 - ease((age - 0.6) / 2.6)) end
       -- the frame
-      local edge = (on and 3 or 2) + f * 5 + breath * 1.5
+      local edge = (on and 3 or 2) + f * 3.5 + breath * 1.5
       put(edge, x0, y0, CARD_W, 1)
       put(edge, x0, y0 + CARD_H - 1, CARD_W, 1)
       put(edge, x0, y0, 1, CARD_H)
@@ -184,7 +184,7 @@ return function(K)
       local lit = glow * 0.8 + f
       -- the sky: a glow over the line, warmer with the bloom and the light
       local pass = bird_x and bird_e * clamp(1 - math.abs(bird_x - (x0 + 13)) / 30, 0, 1) or 0
-      local sky = 1.2 + 1.3 * K.bloom + lit + breath * 0.8 + pass * 2
+      local sky = 1.2 + 1.3 * K.bloom + lit + breath * 0.8 + pass * 3 + K.chord_glow * 0.8
       local rocky = i == 4
       K.gradient(y0 + 2, floor(wl) - 1, function(y)
         local d = (wl - y) / 12
@@ -194,14 +194,14 @@ return function(K)
       local cm, cp = K.chord_at(i)
       if cm then
         hill_y[i] = clamp(wl - 2 - (cm - 36) / 40 * 9, y0 + 4, wl - 1)
-        local hl = (1.6 + 0.8 * K.bloom + 2 * K.chord_glow) * cp
+        local hl = (2.2 + 0.8 * K.bloom + 2.8 * K.chord_glow) * cp
         local h = HILL[i]
         for c = 0, 11 do
           local top = floor(hill_y[i] - h[c] + 0.5)
           local xx = x0 + 1 + c * 2
           if top < wl - 1 and not (rocky and in_rock(xx, top)) then
             put(hl, xx, top, 2, 1)
-            if wl - 1 - top > 1 then put(hl * 0.4, xx + (c % 2), top + 1, 1, floor(wl) - top - 1) end
+            if c % 3 == 1 and wl - 1 - top > 1 then put(hl * 0.4, xx, top + 1, 1, floor(wl) - top - 1) end
           end
         end
       end
@@ -219,7 +219,7 @@ return function(K)
         local y = wl + chop * sin(vx * 0.33 - T * 1.5 + K.drift_x * 0.15) + 0.4 * sin(vx * 0.12 + T * 0.6)
         y = clamp(y, y0 + 3, y0 + CARD_H - 3)
         local near = sx and math.max(0, 1 - math.abs(xx - sx) / 6) or 0
-        local sparkle = hi * 6 * math.max(0, sin(vx * 1.3 + T * 8))
+        local sparkle = hi * 7.5 * math.max(0, sin(vx * 1.3 + T * 8))
         if not (rocky and in_rock(xx, y)) then put((on and 3 or 2) + near * lit * 5 + sparkle, xx, y, 2, 1) end
       end
       for r = 1, 5 do
@@ -297,8 +297,9 @@ return function(K)
         put(5 * e, hx + 3, wl - 7 + stab, 1, 3)
         put(5.5 * e, hx + 4, wl - 7 + stab, 2, 1)
       else
+        -- (lifting away inside its window)
         local f = (inc.u - 0.75) / 0.25
-        K.bird(hx + f * 14, wl - 5 - f * 14, 5 * e, sin(K.NOW * 3), 2)
+        K.bird(hx - 2 + f * 3, wl - 6 - f * 12, 5 * e, sin(K.NOW * 3), 1)
       end
     end
     K.glitter(sample)

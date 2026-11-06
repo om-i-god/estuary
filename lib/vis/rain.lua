@@ -21,7 +21,7 @@ return function(K)
   M.incidents = {{"duck", 22}, {"birds", 12}, {"gust", 12}}
 
   local GROUND = 54
-  local DROP_MAX, SPLASH_MAX, DRIZZLE_MAX, FINE_MAX, BUB_MAX = 16, 12, 20, 8, 4
+  local DROP_MAX, SPLASH_MAX, DRIZZLE_MAX, FINE_MAX, BUB_MAX = 16, 10, 16, 8, 4
   local drops, splashes, drizzle, fine, bubbles = {}, {}, {}, {}, {}
   local fine_acc = 0
   local curtain_x = 0                     -- the far rain's drift, integrated
@@ -103,10 +103,10 @@ return function(K)
     local bloom, breath, sw = K.bloom, K.breath, K.sw_disp
     local mid, hi, nat, lo = A[K.MID], A[K.HI], A[K.NAT], A[K.LO]
     -- the pale rainy sky low down, behind the trees
-    local pale = 1.3 + 0.9 * bloom
+    local pale = 1.2 + 1.3 * bloom
     K.gradient(28, GROUND - 1, function(y)
       local v = y < 37 and ((y - 29) / 8) ^ 2 * (0.55 + 0.2 * bloom) or 0.4 + pale * ((y - 37) / 16) ^ 1.5
-      return v + breath * 1.2 * clamp((y - 36) / 14, 0, 1)
+      return v + breath * 1.6 * clamp((y - 36) / 14, 0, 1)
     end, far)
     -- the far rain: curtains of strokes in the distance, as many as the
     -- water sounds bring
@@ -153,7 +153,7 @@ return function(K)
     for c = 46, 63 do
       local t = bank[c]
       if t < GROUND then
-        local lean = clamp(wind(c * 2, t) * 0.4 + nat * 1.2 * sin(T * 2 + c), -2, 2)
+        local lean = clamp(wind(c * 2, t) * 0.4 + (nat * 1.2 + A[K.AMP] * 0.8) * sin(T * 2 + c), -2, 2)
         put(2 + bloom, c * 2 + lean, t - 1 - (c % 3), 1, 2 + (c % 3))
       end
     end
@@ -174,7 +174,7 @@ return function(K)
     end
     for d = 2, 9, 2 do
       local y = GROUND + d
-      K.streaks(pale * 0.6 * (1 - d / 12) + breath * 1.8, y, 6, 8, K.drift_x * 0.5 + d * 3,
+      K.streaks(pale * 0.6 * (1 - d / 12) + breath * 2.6, y, 6, 8, K.drift_x * 0.5 + d * 3,
         function(x) return GROUND - d * 1.4 < K.at(far, x) end)
     end
     K.surface(0, GROUND + 4, 128, 64, 1, 8, 3)
@@ -204,7 +204,7 @@ return function(K)
         add_splash(d.x, d.lvl, d.kind)
         table.remove(drops, i)
       else
-        local lv = d.lvl * ease((T - d.t0) / 0.15) * (0.75 + 0.4 * A[K.AMP])
+        local lv = d.lvl * ease((T - d.t0) / 0.15) * (0.65 + 0.55 * A[K.AMP])
         local slant = wx / d.v
         if d.kind == 4 then
           -- a slow fat drip
@@ -213,7 +213,8 @@ return function(K)
           local tail = floor(d.v * (d.kind == 2 and 0.2 or 0.35)) + 4
           local w = d.kind == 3 and 3 or 2
           put(lv, d.x, d.y, w, 2)
-          for k = 2, tail, 2 do put(lv * (1 - k / (tail + 1)) * 0.6, d.x - k * slant + (w > 2 and 1 or 0), d.y - k, 1, 2) end
+          local tw = d.kind == 1 and 2 or 1
+          for k = 2, tail, 2 do put(lv * (1 - k / (tail + 1)) * 0.65, d.x - k * slant + (w > 2 and 1 or 0), d.y - k, tw, 2) end
         end
       end
     end
@@ -231,7 +232,7 @@ return function(K)
       if d.y >= math.min(surf_y(d.x), bank_y(d.x)) then
         table.remove(drizzle, i)
       else
-        put(1 + hi * 3.5, d.x, d.y, 1, 2)
+        put(1 + hi * 4.5, d.x, d.y, 1, 2)
       end
     end
     -- each drop rings the water: the kind of drop decides the ring
@@ -243,7 +244,7 @@ return function(K)
         table.remove(splashes, i)
       else
         local y0 = surf_y(s.x)
-        local lv = s.lvl * 0.6 * (1 - life) ^ 1.2
+        local lv = s.lvl * 0.7 * (1 - life) ^ 1.2
         if s.kind == 2 then
           K.ring(s.x - 2, y0, 1 + age * 8, 0.28, lv, 8); K.ring(s.x + 2, y0 + 1, 1 + age * 7, 0.28, lv, 8)
         else

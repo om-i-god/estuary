@@ -98,7 +98,7 @@ return function(K)
     local top = floor(yw) - 1
     local reach = 20 + 3 * bloom
     local function sky(y) local u = (yw - y) / reach; return u < 1 and glow * (1 - u) ^ 2.2 or 0 end
-    for y = 0, top do K.dither_row(sky(y) + breath * 1.3 * clamp(1 - (yw - y) / 14, 0, 1), y, head) end
+    for y = 0, top do K.dither_row(sky(y) + breath * 1.8 * clamp(1 - (yw - y) / 14, 0, 1), y, head) end
     K.blit(clouds, 0.8 + 0.6 * bloom, K.drift_x * 0.05 + T * 0.35, true)
     for y = top - 8 - lift, top do
       local h = (top - y)
@@ -157,7 +157,7 @@ return function(K)
     for x = 0, 126, 2 do
       local w = wave(x)
       local sparkle = hi * 2.5 * math.max(0, sin(x * 1.1 - T * 6))
-      put(3 + clamp(-w * 0.6, -1, 1.5) + K.bar_pulse + breath * 1.5 + sparkle, x, yw + w, 2, 1)
+      put(3 + clamp(-w * 0.6, -1, 1.5) + K.bar_pulse + breath * 2.2 + sparkle, x, yw + w, 2, 1)
     end
     -- chord voices: soft bands of light under the line, one per tone, across
     -- by its pitch, lower notes deeper, refracted by the same wave; a new
@@ -187,7 +187,7 @@ return function(K)
       local fl = 0.5 + 0.5 * sin(T * (2.5 + 5 * hi) + yy * 1.9) * sin(T * 1.3 + yy * 0.7)
       if fl > 0.3 then
         local wd = 1 + floor((2 + 6 * depth) * (0.5 + hi) * fl + 0.5)
-        local l = (1.5 + 4.5 * hi + 1.5 * bloom) * fl * (1 - 0.4 * depth) * (1 - 0.6 * shade)
+        local l = (1.5 + 6 * hi + 1.5 * bloom) * fl * (1 - 0.4 * depth) * (1 - 0.6 * shade)
         put(l, sx + wave(yy * 3) * 1.5 + sin(yy * 2.3 + T) * (1 + 2 * depth) - wd / 2, yy, wd, 1)
       end
     end
@@ -201,7 +201,7 @@ return function(K)
         local len = 5 + 9 * mid
         for x = (off % 31) - 31, 127, 31 do
           local h = K.hash(floor((x - off) / 31 + 0.5) + r * 17, 27)
-          put(1.5 + 1.5 * mid + r * 0.3 + hi * 2.5 * math.max(0, sin(x * 0.7 + T * 7 + r)), x + h * 8, y, len * (0.6 + 0.6 * h), 1)
+          put(1.5 + 1.5 * mid + r * 0.3 + hi * 3.5 * math.max(0, sin(x * 0.7 + T * 7 + r)), x + h * 8, y, len * (0.6 + 0.6 * h), 1)
           if nat > 0.1 and h < nat * 0.8 then put(3 + 3 * nat, x + h * 8 + len * 0.3, y - 1, 2, 1) end
         end
       end
@@ -214,7 +214,7 @@ return function(K)
       local age = T - mk.t0
       if age > 4.5 then table.remove(marks, i)
       else
-        local e = ease(age / 0.25) * (1 - ease((age - 1.2) / 3.3))
+        local e = 1.15 * ease(age / 0.25) * (1 - ease((age - 1.2) / 3.3))
         local x = mk.x
         if mk.slot == 1 then
           -- a crest close in catches the light and breaks along, foam behind
@@ -234,7 +234,7 @@ return function(K)
           local y = clamp(yw - 6 - mk.u * 24, 3, yw - 4)
           put(6.5 * e, x, y, 1, 1)
           put(3.5 * e, x - 1, y, 1, 1); put(3.5 * e, x + 1, y, 1, 1); put(3.5 * e, x, y - 1, 1, 1); put(3.5 * e, x, y + 1, 1, 1)
-          put(1.5 * e, x - 2, y - 2, 5, 5)
+          put(1.8 * e, x - 3, y, 1, 1); put(1.8 * e, x + 3, y, 1, 1)
           for d = 3, 15, 3 do put(3.5 * e * (1 - d / 18), x - 1 + sin(T * 3 + d) * 1.2, yw + d, 3, 1) end
         else
           -- a far sail's glint on the line, and in the water

@@ -14,7 +14,8 @@
 --      SNAP=dir     after the run, draw each theme into a real raster and write dir/<name>.pgm;
 --                   asserts each frame has >= 40 lit pixels and none repeats another. also
 --                   <name>_still.pgm (the engine's ears silent: never blank) and
---                   <name>_loud.pgm (ears pinned at 1: <= 35% of the screen lit)
+--                   <name>_loud.pgm (ears pinned at 1: <= 35% of the screen lit) and
+--                   <name>_incident.pgm (one of its small happenings forced on)
 -- the engine's output polls (out_amp/lo/mid/hi, nat_amp) are fed every 8th
 -- from the music's state, so the visuals always see some ears
 
@@ -109,7 +110,13 @@ if os.getenv("SEED") then
   os.time = function() return seed end
 end
 
-function include(p) return dofile(p .. ".lua") end
+-- (the visuals module estuary.lua loads is kept, so SNAP can force an incident)
+local SIM_VIS
+function include(p)
+  local m = dofile(p .. ".lua")
+  if p == "lib/visuals" then SIM_VIS = m end
+  return m
+end
 
 -- params ---------------------------------------------------------------
 local P = {order = {}, defs = {}}
@@ -546,9 +553,19 @@ if SNAP then
       counts[e[1]] = c
     end
     EARS = nil
+    -- one frame in the middle of one of the theme's small happenings
+    if SIM_VIS and SIM_VIS._incident then
+      SIM_VIS._incident(1 + th % 2)
+      for i = 1, 14 do tick_all(); steps = steps + 1; for k = 1, 8 do redraw() end end
+      local c = 0
+      for y = 0, 63 do for x = 0, 127 do if (RAST.buf[y * 128 + x] or 0) > 0 then c = c + 1 end end end
+      RAST.snap(string.format("%s/%s_incident.pgm", SNAP, names[th]))
+      assert(c >= 40 and c <= 0.35 * 8192, names[th] .. ": " .. c .. " lit pixels mid-incident")
+      counts.incident = c
+    end
     assert(counts.still >= 40, names[th] .. ": only " .. counts.still .. " lit pixels with the ears silent")
     assert(counts.loud <= 0.35 * 8192, names[th] .. ": " .. counts.loud .. " lit pixels with the ears pinned")
-    print(string.format("snap %-9s lit pixels %d  (ears silent %d, pinned %d)", names[th], lit, counts.still, counts.loud))
+    print(string.format("snap %-9s lit pixels %d  (ears silent %d, pinned %d, incident %d)", names[th], lit, counts.still, counts.loud, counts.incident or -1))
   end
   params:set("hud", 1)
 end

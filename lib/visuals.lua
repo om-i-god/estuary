@@ -91,7 +91,7 @@ local ch_now, ch_prev = {}, {}          -- the chord's tones, and the last chord
 local ch_age = 999                      -- s since the chord moved
 local inc, inc_next, inc_last = nil, 0, 0  -- the incident on screen, when the next may start
 
-local GLINT_MAX = 14
+local GLINT_MAX = 20
 
 -- the kit every theme draws with (filled in below, refreshed every frame)
 local K = {A = A, AMP = AMP, LO = LO, MID = MID, HI = HI, NAT = NAT, TAU = TAU,
@@ -311,7 +311,7 @@ local function row_above(l, y, prof, x0, x1)
   if run then put(l, run, y, x1 - run, 1) end
 end
 
--- the hand-made dither: every row is cut into strokes 2..10 px long, each
+-- the hand-made dither: every row is cut into strokes 3..13 px long, each
 -- with its own threshold, part fixed noise, part a slow blotchy field, so a
 -- gradient breaks into irregular brushed strokes instead of ruled rows. a
 -- row at light 2.4 is level 2 with ~40% of its strokes at 3; at 0.3 it is
@@ -322,7 +322,7 @@ for y = 0, 63 do
   local m, x, k = {}, 0, 0
   while x < 128 do
     k = k + 1
-    local len = 2 + math.floor(9 * hash(y * 61 + k, 91))
+    local len = 3 + math.floor(11 * hash(y * 61 + k, 91))
     local x1 = math.min(128, x + len)
     local blot = 0.5 + 0.27 * math.sin(x * 0.13 + y * 0.71) + 0.23 * math.sin(x * 0.047 - y * 0.29 + 1.7)
     m[#m + 1], m[#m + 2], m[#m + 3] = x, x1, clamp(0.08 + 0.84 * (0.55 * hash(y * 977 + k, 92) + 0.45 * blot), 0.04, 0.96)
@@ -487,7 +487,7 @@ local function glitter(sample, rate)
     glint_acc = glint_acc - 1
     if #glints < GLINT_MAX then
       local x, y = sample(grnd(), grnd())
-      if x then glints[#glints + 1] = {x = x, y = y, t0 = T, life = 0.2 + 0.3 * grnd(), pk = 4 + 3 * grnd()} end
+      if x then glints[#glints + 1] = {x = x, y = y, t0 = T, life = 0.4 + 0.5 * grnd(), pk = 4.5 + 3 * grnd()} end
     end
   end
   for i = #glints, 1, -1 do
@@ -589,7 +589,7 @@ local function physics(S)
   bar_kick = bar_kick * math.exp(-DT / 0.7)
   -- the breath: up over ~0.5 s, down over ~1.5 s, never a step
   breath = follow(breath, breath_kick, 0.3, DT)
-  breath_kick = breath_kick * math.exp(-DT / 1.3)
+  breath_kick = breath_kick * math.exp(-DT / 1.6)
   moment_age = moment_age + DT
   HV_A, HV_P = 0.6 + 2.6 * A[LO], -T * 0.55 + 0.8 * math.sin(T * 0.07)
   ch_age = ch_age + DT
@@ -843,7 +843,7 @@ function VIS.draw(i, S, dt)
   -- a theme switch: the old picture eases to black, the new one eases up
   if cur == nil then cur = i end
   if i ~= cur then
-    xf = xf - DT / 0.3
+    xf = xf - DT / 0.45
     if xf <= 0 then
       clear_theme(cur)
       for k = #glints, 1, -1 do glints[k] = nil end

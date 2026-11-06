@@ -43,6 +43,21 @@ return function(K)
     while #marks > MARK_MAX do table.remove(marks, 1) end
   end
 
+  -- the dry sand's stipple and ripple marks, fixed per column (so the beach
+  -- stays put while the water moves): SAND[c] = {y, dx, level, ...}
+  local SAND = {}
+  for c = 0, 63 do
+    local col = {}
+    for y = 5, 62 do
+      local h = K.hash(c * 64 + y, 7)
+      local ripple = ((y // 4) % 3 == 0) and sin(c * 0.4 + y * 0.4) > 0.3
+      if h < 0.07 or (ripple and h < 0.4) then
+        col[#col + 1], col[#col + 2], col[#col + 3] = y, h < 0.035 and 1 or 0, (h < 0.02 or ripple) and 1.6 or 1
+      end
+    end
+    SAND[c] = col
+  end
+
   -- dune grass in the near corner: {x, height, phase}
   local GRASS = {}
   for k = 1, 9 do GRASS[k] = {106 + k * 2.2 + 2 * K.hash(k, 71), 4 + 5 * K.hash(k, 72), K.hash(k, 73) * 6} end
@@ -116,18 +131,19 @@ return function(K)
       -- (every other column, two px wide: the lines read the same at half
       -- the cost)
       if c % 2 == 0 then
+        local bend = floor(1.5 * sin(x * 0.045 + T * 0.25) + 0.5)
         for yy = 5 + (c // 2) % 3, yl - 3, 4 do
           local near = 1 - (yl - yy) / 50
           local w = sin(x * 0.07 + yy * 0.55 - T * 0.9 + K.drift_x * 0.08) + 0.6 * sin(x * 0.03 - yy * 0.2 + T * 0.3)
           local lit = 0
           if sun_e > 0 then
-            local dx, dy = (x - sun_x) / 32, (yy - sun_y) / 11
+            local dx, dy = (x - sun_x) / 40, (yy - sun_y) / 14
             local d = dx * dx + dy * dy
-            if d < 1 then lit = sun_e * (1 - d) * 4 end
+            if d < 1 then lit = sun_e * (1 - d) * 5 end
           end
-          if w > 0.5 - 0.35 * near - 0.5 * mid - lit * 0.3 then
+          if w > 0.7 - 0.35 * near - 0.45 * mid - lit * 0.3 then
             put((w > 1.25 and 2 or 1) + near * (0.8 + breath * 1.5) + mid * 1.3 + lit
-              + hi * 4 * math.max(0, sin(x * 1.3 + yy * 2.1 + T * 8)), x, yy, 4, 1)
+              + hi * 5 * math.max(0, sin(x * 1.3 + yy * 2.1 + T * 8)), x + (w > 1 and 0 or 1), yy + bend, w > 1.1 and 4 or 3, 1)
           end
         end
       end
@@ -150,7 +166,7 @@ return function(K)
       local yf = math.min(62, yl + reach)
       front[c] = yf
       fronts[c] = yf
-      put(5 + breath * 2.5, x, yl, 2, 1)
+      put(5 + breath * 3.5, x, yl, 2, 1)
       -- the damp strip the sea always keeps dark-bright just above the line
       if c % 3 ~= 0 then put(1.5 + breath, x, yl - 2, 2, 1) end
       if wet > 0.02 then put(2 + wet * 3, x, yl - 1, 2, 1) end
@@ -160,15 +176,15 @@ return function(K)
       wet_y[c] = wy
       if reach > 1.5 then
         -- the sheet of water over the sand: sparse glossy dashes that slide
-        for yy = floor(yl) + 2, yf - 2, 3 do
+        for yy = floor(yl) + 2 + c % 2, yf - 2, 4 do
           local w = sin(x * 0.15 + yy * 0.5 - T * 1.2 + K.drift_x * 0.1)
             + 0.6 * sin(x * 0.07 - yy * 0.9 + T * 0.5)
-          if w > 0.6 - 0.5 * mid then put(w > 0.85 and 2.5 or 1.5, x, yy, 2, 1) end
+          if w > 0.75 - 0.4 * mid then put(w > 0.95 and 2.5 or 1.5 + mid, x, yy, 2, 1) end
         end
         -- the foam: a lace of broken rows at the front, brighter as it runs
         -- up, thicker with out_mid, glittering with out_hi
         local up = sin(cyc - x * 0.02) > 0
-        local sparkle = hi * 4 * math.max(0, sin(x * 1.7 + T * 9))
+        local sparkle = hi * 5 * math.max(0, sin(x * 1.7 + T * 9))
         local lace = sin(x * 0.9 + T * 2.3 + sin(x * 0.31))
         put((up and 6 or 4) + sparkle, x + (lace > 0 and 1 or 0), yf, lace > 0.5 and 1 or 2, 1)
         if lace > -0.3 then put(up and 3 or 2, x, yf - 1 - (lace > 0.4 and 1 or 0), 1, 1) end
@@ -182,15 +198,15 @@ return function(K)
       local ys = math.max(yl, yf)
       if wy > ys + 1.5 then
         local g = math.min(1, (wy - ys) / 6)
-        for yy = floor(ys) + 2, wy, 2 do
-          if (c + yy) % 3 ~= 0 then put(1 + g * (1 + bloom) + breath * 1.5 + hi * 2.5 * math.max(0, sin(x * 0.7 + yy + T * 5)), x, yy, 2, 1) end
+        for yy = floor(ys) + 2 + c % 2, wy, 3 do
+          if (c + yy) % 4 ~= 0 then put(1 + g * (1 + bloom) + breath * 2.2 + hi * 3.5 * math.max(0, sin(x * 0.7 + yy + T * 5)), x, yy, 2, 1) end
         end
         ys = wy
       end
       if wet > 0.02 then
         -- (a flooded beach hides most of it)
         local deep = (2 + wet * 8) * (1 - 0.7 * sw)
-        for yy = floor(ys) + 1 + c % 2, ys + 1 + deep, 2 do put(1 + wet * 2, x, yy, 2, 1) end
+        for yy = floor(ys) + 1 + c % 3, ys + 1 + deep, 3 do put(1 + wet * 2, x, yy, 2, 1) end
         ys = ys + 1 + deep
       end
       sand_top[c] = ys + 3
@@ -199,16 +215,11 @@ return function(K)
     -- dry sand: rows of the hand-made stipple wherever the beach is dry,
     -- ripple marks every few rows; it stays put while the water moves, and
     -- warms with the daylight
-    local sv = 0.14 + 0.12 * bloom
-    for y = 5, 62, 3 do
-      local v = sv + (((y // 3) % 3 == 0) and 0.14 or 0)
-      local run
-      for c = 0, 64 do
-        if c < 64 and y >= sand_top[c] then
-          run = run or c * 2
-        elseif run then
-          K.dither_row(v, y, nil, run, c * 2); run = nil
-        end
+    local sl = 1 + 0.6 * bloom
+    for c = 0, 63 do
+      local col, top = SAND[c], sand_top[c]
+      for i = 1, #col, 3 do
+        if col[i] >= top then put(col[i + 2] * sl, c * 2 + col[i + 1], col[i], 1, 1) end
       end
     end
     -- the dune grass close by, bending with the wind
@@ -226,15 +237,19 @@ return function(K)
       local age = T - mk.t0
       if age > 5 then table.remove(marks, i)
       else
-        local e = ease(age / 0.2) * (1 - ease((age - 1.2) / 3.8))
+        local e = 1.2 * ease(age / 0.2) * (1 - ease((age - 1.2) / 3.8))
         local x = mk.x
         local fy = fronts[x // 2] or 50
         if mk.slot == 1 then
           -- foam bursts on the wash
-          for k = -4, 4 do
-            put(7 * e * (1 - math.abs(k) / 6), x + k * 2, fy - 1 - (4 - math.abs(k)) * math.min(age, 1.2) * 1.5, 2, 1)
+          -- foam bursts along the wash, spray thrown up off it
+          local spread = 4 + math.min(age, 1.5) * 6
+          put(7 * e, x - spread, fy, spread * 2, 1); put(4.5 * e, x - spread * 0.7, fy + 1, spread * 1.4, 1)
+          for k = -2, 2 do
+            local hy = sin(math.pi * clamp(age / 1.2, 0, 1)) * (3 + (2 - math.abs(k)))
+            put(6 * e, x + k * 3 + (k % 2), fy - 1 - hy, 1, 1)
           end
-          put(4.5 * e, x - 8, fy + 1, 17, 1); put(2.5 * e, x - 6, fy + 3, 13, 1)
+          put(2.5 * e, x - spread, fy + 3, spread * 2, 1)
         elseif mk.slot == 2 then
           -- a shell glints on the wet sand, below the front
           local y = math.min(61, fy + 3 + mk.u * 4)

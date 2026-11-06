@@ -158,7 +158,7 @@ return function(K)
         end
         for k = 1, 4 do put(lv * 0.4, c.x - 1 + sin(T * 2 + k) * 0.8, c.y + k * 2 - 1, 3, 1) end
         -- the clear patch lets the light through onto the water round it
-        put(2.5 * a, c.x - 8, c.y + 1, 17, 1)
+        put(1.8 * a, c.x - 5, c.y + 1, 11, 1)
       end
     end
     -- incidents that sit under the fog

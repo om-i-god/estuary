@@ -214,7 +214,7 @@ return function(K)
       local age = T - mk.t0
       if age > 4 then table.remove(marks, i)
       else
-        local e = ease(age / 0.2) * (1 - ease((age - 0.8) / 3.2))
+        local e = 1.3 * ease(age / 0.2) * (1 - ease((age - 0.8) / 3.2))
         local x, y = orbit_pt(mk.slot, mk.a + age * 0.06 * (mk.slot % 2 == 0 and 1 or -1))
         if mk.slot == 1 then
           K.ring(x, y, 1.5 + age * 4, 0.7, 5 * e, 14)
@@ -241,11 +241,11 @@ return function(K)
     local ma = K.moment_age
     if ma < 14 then
       local e = ease(ma / 2) * (1 - ease((ma - 9) / 5))
-      for arm = 0, 2 do
-        for k = 0, 16 do
+      for arm = 0, 3 do
+        for k = 0, 18 do
           local r = 2 + k * 1.1
-          local a = arm * K.TAU / 3 + k * 0.32 - ma * 1.4
-          put(e * (5 - k * 0.2), 64 + cos(a) * r * 1.6, 32 + sin(a) * r, 2, 1)
+          local a = arm * K.TAU / 4 + k * 0.32 - ma * 1.4
+          put(e * (6 - k * 0.2), 64 + cos(a) * r * 1.6, 32 + sin(a) * r, 2, 1)
         end
       end
     end

@@ -146,12 +146,12 @@ return function(K)
       left = left - dt
     end
     -- the sky: pale low down, over the far shore, breathing on the bar
-    local glow = 0.9 + 0.8 * bloom + 0.9 * breath
+    local glow = 0.9 + 0.8 * bloom + 1.3 * breath
     K.gradient(14, HZ - 1, function(y) local u = (HZ - y) / 24; return glow * math.max(0, 1 - u) ^ 2.5 end)
     K.blit(clouds, 0.9 + 0.6 * bloom, K.drift_x * 0.05 + T * 0.25, true)
     put(2, 0, HZ, 128, 1)
     K.blit(mud, 1)
-    K.twinkle(WET, hi, 6.5)
+    K.twinkle(WET, hi, 8)
     -- the chord's pools on the mud, shining with the sky
     for i = 1, 4 do
       local m, p = K.chord_at(i)

@@ -110,7 +110,7 @@ return function(K)
     local hi, mid, nat = A[K.HI], A[K.MID], A[K.NAT]
     -- the water: light from the surface fading with depth, breathing on the bar
     local glow = 0.75 + 0.9 * bloom + 1.3 * breath
-    K.gradient(SURF + 1, FLOOR, function(y) local u = (y - SURF) / (26 - 7 * bloom); return glow * math.max(0, 1 - u) ^ 2.5 end, nil)
+    K.gradient(SURF + 1, FLOOR, function(y) local u = (y - SURF) / (26 - 7 * bloom); return glow * math.max(0, 1 - u) ^ 2.8 end, nil)
     K.blit(far, 1 + 0.5 * bloom, K.drift_x * 0.1, true)
     -- the surface seen from below: a bright wavering skin
     for x = 0, 126, 2 do
@@ -154,7 +154,7 @@ return function(K)
       local x = cx + cos(f.a) * f.r * spread
       local y = cy + sin(f.a) * f.r * 0.5 * (1 + 0.5 * mid) + f.dy
       local dir = -sin(f.a) >= 0 and 1 or -1
-      put(2.5 + bloom + 2.5 * mid, x, y, 2 + floor(mid * 1.5), 1)
+      put(2.5 + bloom + 3.2 * mid, x, y, 2 + floor(mid * 1.5), 1)
       put(1.5 + 1.5 * mid, x - dir, y, 1, 1)
     end
     -- the fronds: a stalk with blades along it, near ones brighter and wider
@@ -231,7 +231,8 @@ return function(K)
       local e = ease(ma / 2) * (1 - ease((ma - 11) / 5))
       local tx, ty = -14 + ma * 9.5, 30 + sin(ma * 0.4) * 4
       local fl = sin(ma * 2)
-      put(5 * e, tx - 4, ty - 2, 9, 5); put(6 * e, tx - 2, ty - 3, 5, 1)
+      put(1.5 * e, tx - 5, ty - 3, 11, 7)
+      put(5.5 * e, tx - 4, ty - 2, 9, 5); put(6.5 * e, tx - 2, ty - 3, 5, 1)
       put(6 * e, tx + 5, ty - 1, 3, 2)
       put(4 * e, tx - 1 + fl, ty - 5 - fl, 3, 2); put(4 * e, tx - 1 + fl, ty + 3 + fl, 3, 2)
       put(3.5 * e, tx - 6, ty - 3 - fl * 0.5, 2, 1); put(3.5 * e, tx - 6, ty + 2 + fl * 0.5, 2, 1)
