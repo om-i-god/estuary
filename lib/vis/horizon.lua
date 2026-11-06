@@ -99,7 +99,7 @@ return function(K)
     -- bloom opens; a few far lights above it while the bloom is low
     local glow = (1.5 + 1.2 * bloom) * (1 - 0.25 * shade)
     local top = floor(yw) - 1
-    local reach = 20 + 3 * bloom
+    local reach = 18 + 3 * bloom
     local function sky(y) local u = (yw - y) / reach; return u < 1 and glow * (1 - u) ^ 2.2 or 0 end
     for y = 0, top do K.dither_row(sky(y) + breath * 1.8 * clamp(1 - (yw - y) / 14, 0, 1), y, head) end
     K.blit(clouds, 0.8 + 0.6 * bloom, K.drift_x * 0.05 + T * 0.35, true)
