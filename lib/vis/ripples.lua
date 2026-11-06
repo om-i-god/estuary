@@ -243,7 +243,7 @@ return function(K)
       local dx, dl = nudge(x, y)
       if paw and math.abs(x - paw) < 24 then
         local f = (1 - math.abs(x - paw) / 24) * pawe
-        dx, dl = dx + f * 3 * sin(y * 2.1 + T * 7), dl - f * 1.5
+        dx, dl = dx + f * 4 * sin(y * 2.1 + T * 7), dl - f * 2
       end
       return dx, dl
     end
@@ -401,7 +401,7 @@ return function(K)
         local x = cx + PAW[k]
         local f = 1 - math.abs(x - cx) / 22
         if f > 0 and x >= 0 and x < 127 then
-          put(e * f * (2.5 + 1.5 * sin(T * 9 + k)), x + sin(T * 5 + k) * 1.5, wl + PAW[k + 1], 2, 1)
+          put(e * f * (3.5 + 1.5 * sin(T * 9 + k)), x + sin(T * 5 + k) * 1.5, wl + PAW[k + 1], 3, 1)
         end
       end
     end

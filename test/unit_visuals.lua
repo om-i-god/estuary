@@ -466,14 +466,16 @@ local function mean_diff(a, b, f0)
   return d / (RF - f0 + 1)
 end
 
--- where a change sits on screen: the centroid of |a - b| over the frames
-local function centroid(a, b, f0)
+-- where a change sits on screen: the centroid of |a - b| over the frames,
+-- counting only pixels where b also differs from c (what the two runs
+-- share, the part of the response that does not depend on pitch, cancels)
+local function centroid(a, b, f0, c)
   local sx, sy, sw = 0, 0, 0
   for i = f0, RF do
-    local fa, fb = a[i], b[i]
+    local fa, fb, fc = a[i], b[i], c[i]
     for p = 0, 8191 do
       local d = math.abs(fa[p] - fb[p])
-      if d > 0 then sx, sy, sw = sx + (p % 128) * d, sy + (p // 128) * d, sw + d end
+      if d > 0 and fb[p] ~= fc[p] then sx, sy, sw = sx + (p % 128) * d, sy + (p // 128) * d, sw + d end
     end
   end
   if sw == 0 then return 64, 32, 0 end
@@ -533,8 +535,8 @@ for th, name in ipairs(NAMES) do
     for _, s in ipairs({1, 3}) do
       local lo = react_run(th, {note = true, slot = s, midi = 57})
       local hi = react_run(th, {note = true, slot = s, midi = 86})
-      local lx, ly = centroid(base, lo, 61)
-      local hx, hy = centroid(base, hi, 61)
+      local lx, ly = centroid(base, lo, 61, hi)
+      local hx, hy = centroid(base, hi, 61, lo)
       local d = math.sqrt((lx - hx) ^ 2 + (ly - hy) ^ 2)
       far = math.min(far, d)
       assert(d > 12, string.format("slot %d: low and high notes land %.1f px apart", s, d))

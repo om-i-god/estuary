@@ -1,24 +1,61 @@
 -- drift: a pool seen from above, between two grassy banks, turning in four
--- slow eddies. each motif
--- is a leaf carried round its eddy at its own cycle length, a wake fading
--- behind it; petals ride the eddies more slowly. the eddies wobble with
--- out_lo and precess with the current, their paths a faint shimmer on the
--- surface, and a shimmering line joins two leaves whose phases line up
+-- slow eddies. you look down through the water to its bed, where the
+-- chord lies as four pools of sunlight (across by pitch, nearer the middle
+-- for higher tones) that slide to their new places when it changes. each
+-- motif is a leaf carried round its eddy at its own cycle length, a wake
+-- fading behind it; petals ride the eddies more slowly. a note lands on its
+-- motif's eddy, across by its pitch, and the motif decides what lands: a
+-- drop that rings, a petal, a spinning seed, a few bubbles. the eddies
+-- wobble with out_lo and precess with the current, their paths a shimmer on
+-- the surface that out_mid brightens and out_hi sparkles; the water sounds
+-- ruffle the surface with wind; a shimmering line joins two leaves whose
+-- phases line up. grass blades lean out over the water from the banks. the
+-- bar breathes along the eddies; a swell raises the pool, the banks drawing
+-- back; a moment opens a slow whirlpool in the middle. now and then a water
+-- strider skates across, a big leaf drifts through, or a fish's shadow
+-- passes under
 return function(K)
   local M = {}
   local put, A, clamp, ease = K.put, K.A, K.clamp, K.ease
+  local sin, cos, floor = math.sin, math.cos, math.floor
+
+  M.incidents = {{"strider", 14}, {"leaf", 22}, {"fish", 12}}
 
   local ORBIT_RY = {6, 12, 18, 24}
-  local PETALS = 16
-  local petals
+  local PETALS = 14
+  local MARK_MAX = 10
+  local petals, marks
 
   function M.init()
-    petals = {}
+    petals, marks = {}, {}
     for k = 1, PETALS do
       petals[k] = {i = (k - 1) % 4 + 1, a = K.hash(k, 21) * K.TAU, r = 0.75 + 0.5 * K.hash(k, 22),
         w = 0.05 + 0.06 * K.hash(k, 23), lv = 2 + 1.5 * K.hash(k, 24)}
     end
   end
+
+  function M.clear() marks = {} end
+
+  -- the banks' grass, baked once: dashes in the corners, a lit lip
+  local function e1(y) return y < 16 and 40 * (1 - (y / 16) ^ 1.6) + 2 * sin(y * 1.3) or 0 end
+  local function e2(y) return y > 46 and 46 * (1 - ((63 - y) / 17) ^ 1.6) + 2 * sin(y * 1.7) or 0 end
+  local grass = K.bake(function(rec)
+    for y = 0, 63 do
+      local a, b = e1(y), e2(y)
+      if a > 1 then
+        for x = (y * 5) % 4, a - 3, 4 do
+          if K.hash(x * 64 + y, 25) < 0.5 then rec(1 + (K.hash(x + y, 26) < 0.2 and 1 or 0), x, y, 1, 2) end
+        end
+      end
+      if b > 1 then
+        for x = 128 - b + 3 + (y * 5) % 4, 127, 4 do
+          if K.hash(x * 64 + y, 27) < 0.5 then rec(1 + (K.hash(x + y, 28) < 0.2 and 1 or 0), x, y, 1, 2) end
+        end
+      end
+    end
+  end)
+  -- long blades leaning out over the water: {x, y, length, dir, phase}
+  local BLADES = {{30, 6, 9, 1, 0.3}, {36, 3, 7, 1, 1.7}, {22, 10, 8, 1, 2.9}, {94, 58, 9, -1, 0.8}, {100, 54, 7, -1, 2.2}, {88, 61, 8, -1, 3.6}}
 
   -- a point on eddy i at angle a (scaled out by r): an ellipse that wobbles
   -- with out_lo, its wobble carried round by the current, tilted a little
@@ -29,67 +66,102 @@ return function(K)
     local rx = ry * 1.7
     local lo = A[K.LO]
     local dir = (i % 2 == 0) and 1 or -1
-    local r = 1 + (0.03 + 0.11 * lo) * math.sin(3 * a + T * 0.8 + i + dir * dx * 0.02)
-      + (0.02 + 0.05 * lo) * math.sin(2 * a - T * 0.45 + i * 2)
-    local x, y = math.cos(a) * rx * r, math.sin(a) * ry * r
-    local tl = 0.15 * math.sin(T * (0.05 + 0.01 * i) + dx * 0.01 * dir + i)
-    local c, s = math.cos(tl), math.sin(tl)
+    local r = 1 + (0.03 + 0.11 * lo) * sin(3 * a + T * 0.8 + i + dir * dx * 0.02)
+      + (0.02 + 0.05 * lo) * sin(2 * a - T * 0.45 + i * 2)
+    local x, y = cos(a) * rx * r, sin(a) * ry * r
+    local tl = 0.15 * sin(T * (0.05 + 0.01 * i) + dx * 0.01 * dir + i)
+    local c, s = cos(tl), sin(tl)
     return 64 + x * c - y * s, 32 + x * s + y * c
   end
 
-  local function sample(u, v) return orbit_pt(math.floor(u * 4) + 1, v * K.TAU) end
+  local function sample(u, v) return orbit_pt(floor(u * 4) + 1, v * K.TAU) end
+
+  -- a note lands on its motif's eddy, across by its pitch: the eddy's near
+  -- side for a low note, its far side for a high one
+  function M.note(slot, midi)
+    local x = K.px(midi)
+    local rx = ORBIT_RY[slot] * 1.7
+    local c = clamp((x - 64) / rx, -1, 1)
+    local a = math.acos(c) * (K.pu(midi) > 0.5 and -1 or 1)
+    marks[#marks + 1] = {slot = slot, a = a, t0 = K.T}
+    while #marks > MARK_MAX do table.remove(marks, 1) end
+  end
 
   -- a leaf lying along its heading: a bright midrib and a dimmer blade
-  local function leaf(x, y, hx, hy, lv)
+  local function leaf(x, y, hx, hy, lv, big)
     local n = math.sqrt(hx * hx + hy * hy)
     if n < 1e-6 then hx, hy = 1, 0 else hx, hy = hx / n, hy / n end
+    local s = big or 1
     put(lv, x, y, 1, 1)
-    put(lv * 0.8, x + hx * 1.5, y + hy * 1.5, 1, 1)
-    put(lv * 0.6, x - hx * 1.5, y - hy * 1.5, 1, 1)
-    put(lv * 0.45, x - hx * 2.6, y - hy * 2.6, 1, 1)          -- the stalk
-    put(lv * 0.55, x - hy, y + hx, 1, 1)
-    put(lv * 0.55, x + hy + hx * 0.7, y - hx + hy * 0.7, 1, 1)
+    put(lv * 0.8, x + hx * 1.5 * s, y + hy * 1.5 * s, 1, 1)
+    put(lv * 0.6, x - hx * 1.5 * s, y - hy * 1.5 * s, 1, 1)
+    put(lv * 0.45, x - hx * 2.6 * s, y - hy * 2.6 * s, 1, 1)          -- the stalk
+    put(lv * 0.55, x - hy * s, y + hx * s, 1, 1)
+    put(lv * 0.55, x + hy * s + hx * 0.7, y - hx * s + hy * 0.7, 1, 1)
+    if s > 1 then
+      put(lv * 0.5, x - hy * s * 0.5 - hx, y + hx * s * 0.5 - hy, 1, 1)
+      put(lv * 0.5, x + hy * s * 0.5 + hx * 2, y - hx * s * 0.5 + hy * 2, 1, 1)
+      put(lv * 0.7, x + hx * 3, y + hy * 3, 1, 1)
+    end
   end
 
   function M.draw(S)
     local T = K.T
-    local hi = A[K.HI]
-    -- the banks: grass in the top left and bottom right corners, a lit lip
-    -- where they meet the water, the pool's light lapping at it
-    for y = 0, 63 do
-      local e1 = y < 16 and 40 * (1 - (y / 16) ^ 1.6) + 2 * math.sin(y * 1.3) or 0
-      local e2 = y > 46 and 46 * (1 - ((63 - y) / 17) ^ 1.6) + 2 * math.sin(y * 1.7) or 0
-      local lap = 1 + 0.8 * math.sin(T * 0.9 + y * 0.5)
-      if e1 > 1 then
-        for x = (y * 5) % 4, e1 - 3, 4 do
-          if K.hash(x * 64 + y, 25) < 0.5 then put(1 + (K.hash(x + y, 26) < 0.2 and 1 or 0), x, y, 1, 2) end
+    local hi, mid, nat = A[K.HI], A[K.MID], A[K.NAT]
+    local bloom, breath, sw = K.bloom, K.breath, K.sw_disp
+    -- the bed under the water: the chord's four pools of sunlight, soft
+    -- dithered patches that slide when it changes
+    for i = 1, 4 do
+      local m, p = K.chord_at(i)
+      if m and p > 0.02 then
+        local cx = K.cx(m)
+        local cy = 32 + ((i % 2 == 0) and 1 or -1) * (6 + (76 - m) / 40 * 14)
+        local l = (0.5 + 0.5 * bloom + 0.9 * K.chord_glow) * p
+        for dy = -4, 4 do
+          local hw = 11 * math.sqrt(1 - (dy / 5) ^ 2)
+          K.dither_row(l * (1 - math.abs(dy) / 6), cy + dy, nil, math.max(0, floor(cx - hw)), math.min(128, floor(cx + hw)))
         end
-        put(2 + K.bloom, e1 - 2, y, 2, 1); put(lap, e1 + 1, y, 1, 1)
       end
-      if e2 > 1 then
-        for x = 128 - e2 + 3 + (y * 5) % 4, 127, 4 do
-          if K.hash(x * 64 + y, 27) < 0.5 then put(1 + (K.hash(x + y, 28) < 0.2 and 1 or 0), x, y, 1, 2) end
-        end
-        put(2 + K.bloom, 128 - e2, y, 2, 1); put(lap, 128 - e2 - 2, y, 1, 1)
+    end
+    -- the banks: grass in the top left and bottom right corners, a lit lip
+    -- where they meet the water, the pool's light lapping at it; a swell
+    -- raises the water over their edges
+    K.blit(grass, 1 + 0.4 * bloom)
+    local cut = sw * 8
+    for y = 0, 63, 1 do
+      local a, b = e1(y) - cut, e2(y) - cut
+      local lap = 1 + 0.8 * sin(T * 0.9 + y * 0.5) + breath
+      if a > 1 then put(2 + bloom, a - 2, y, 2, 1); put(lap, a + 1, y, 1, 1) end
+      if b > 1 then put(2 + bloom, 128 - b, y, 2, 1); put(lap, 128 - b - 2, y, 1, 1) end
+    end
+    if cut > 1 then
+      -- the flooded edge: water lying over the grass
+      for y = 0, 63, 2 do
+        local a, b = e1(y), e2(y)
+        if a > 1 then put(1.2 + 0.5 * bloom, a - cut, y, cut, 1) end
+        if b > 1 then put(1.2 + 0.5 * bloom, 128 - b, y, cut, 1) end
       end
     end
     -- the sky lying on the pool: long faint sheens that slide with the
     -- current, broken where the eddies turn the surface
     for y = 6, 58, 4 do
-      K.streaks(1, y, 7 + (y * 3) % 5, 17 + (y * 7) % 6, K.drift_x * (0.5 + y * 0.01) + y * 9.7 + math.sin(T * 0.2 + y) * 3,
-        function(x) return math.sin(x * 0.05 + y * 0.13 - T * 0.1) > -0.3 end)
+      K.streaks(1 + 0.6 * bloom + breath * 1.5, y, 7 + (y * 3) % 5, 17 + (y * 7) % 6, K.drift_x * (0.5 + y * 0.01) + y * 9.7 + sin(T * 0.2 + y) * 3,
+        function(x) return sin(x * 0.05 + y * 0.13 - T * 0.1) > -0.3 end,
+        function(x) return 0, hi * 3 * math.max(0, sin(x * 0.9 + y * 1.7 + T * 6)) end)
     end
-    -- the surface: a faint light texture moving with the current
-    K.surface(0, 1, 128, 64, 1, 10, 5, 3)
-    -- the eddies' paths: arcs of light that run round with the water
+    -- the surface: a faint light texture moving with the current, ruffled
+    -- by the wind the water sounds bring
+    K.surface(0, 1, 128, 64, 1 + nat * 1.3, 10 - floor(nat * 3), 5 - floor(nat * 1.5), 3)
+    -- the eddies' paths: arcs of light that run round with the water,
+    -- fuller and brighter with out_mid, breathing on the bar
     for i = 1, 4 do
       local n = 14 + i * 14
       for k = 0, n - 1 do
         local a = k / n * K.TAU
-        local sh = math.sin(a * 3 - T * (0.5 + 0.1 * i) * (i % 2 == 0 and 1 or -1) + i)
-        if sh > 0.05 then
+        local sh = sin(a * 3 - T * (0.5 + 0.1 * i) * (i % 2 == 0 and 1 or -1) + i)
+        if sh > 0.3 - 0.55 * mid then
           local x, y = orbit_pt(i, a)
-          put(1 + (sh > 0.8 and 1 or 0) + hi * 2.5 * math.max(0, math.sin(k * 2.3 + T * 7 + i)), x, y, 2, 1)
+          put(1 + (sh > 0.8 and 1 or 0) + mid * 1.2 + breath * 1.3 + hi * 3.5 * math.max(0, sin(k * 2.3 + T * 7 + i)), x, y, 2, 1)
         end
       end
     end
@@ -97,8 +169,16 @@ return function(K)
     for _, p in ipairs(petals) do
       p.a = p.a + p.w * (1 + 1.5 * K.energy) * K.DTS * (p.i % 2 == 0 and 1 or -1)
       local x, y = orbit_pt(p.i, p.a, p.r)
-      put(p.lv + K.bloom, x, y, 2, 2)
+      put(p.lv + bloom, x, y, 2, 2)
       put(p.lv * 0.5, x + 2, y + 1, 1, 1)
+    end
+    -- grass blades leaning out over the water, close to you
+    for _, b in ipairs(BLADES) do
+      local sway = sin(T * 0.7 + b[5]) * (0.8 + 1.5 * nat) + K.heave(b[1]) * 0.5
+      for k = 1, b[3] do
+        local u = k / b[3]
+        put(2.5 + bloom, b[1] + b[4] * k * 1.1, b[2] + b[4] * (k * 0.6 + u * u * (2 + sway)), 1, 1)
+      end
     end
     -- the leaves
     local pts, ph, np = {}, {}, 0
@@ -107,14 +187,13 @@ return function(K)
       if p then
         local a = p * K.TAU - math.pi / 2
         local x, y = orbit_pt(i, a)
-        local dir = 1
-        local nx, ny = orbit_pt(i, a + 0.05 * dir)
+        local nx, ny = orbit_pt(i, a + 0.05)
         if K.sounding(S, i) then
           local lv = 6 + K.slot_flash[i] * 6
           -- the wake: two fading arms opening behind it
           for k = 1, 7 do
             local tx, ty = orbit_pt(i, a - k * 0.06)
-            local l = lv * 0.4 * (1 - k / 8)
+            local l = lv * 0.4 * (1 - k / 8) * (0.7 + 0.6 * A[K.AMP])
             put(l, tx, ty, 1, 1)
             if k > 2 then
               local ox, oy = orbit_pt(i, a - k * 0.06, 1 + k * 0.012)
@@ -129,12 +208,46 @@ return function(K)
         end
       end
     end
-    -- a moment: a petal spins in the still centre
+    -- the notes, landing on their eddies
+    for i = #marks, 1, -1 do
+      local mk = marks[i]
+      local age = T - mk.t0
+      if age > 4 then table.remove(marks, i)
+      else
+        local e = ease(age / 0.2) * (1 - ease((age - 0.8) / 3.2))
+        local x, y = orbit_pt(mk.slot, mk.a + age * 0.06 * (mk.slot % 2 == 0 and 1 or -1))
+        if mk.slot == 1 then
+          K.ring(x, y, 1.5 + age * 4, 0.7, 5 * e, 14)
+          put(6 * e, x, y, 1, 1)
+        elseif mk.slot == 2 then
+          -- a petal lands, a small ring under it
+          put(7 * e, x - 1, y, 3, 2); put(4 * e, x + 2, y + 1, 1, 1)
+          K.ring(x, y + 1, 2 + age * 2.5, 0.7, 3 * e, 10)
+        elseif mk.slot == 3 then
+          -- a winged seed spinning on the water
+          local a = T * 5 + i
+          for k = -1, 1, 2 do put(6 * e, x + cos(a) * 2.5 * k, y + sin(a) * 1.5 * k, 2, 1) end
+          put(7 * e, x, y, 1, 1)
+        else
+          -- a few bubbles come up and sit
+          for k = 0, 3 do
+            local bx, by = x + (k - 1.5) * 2.5, y + sin(k * 2.1) * 1.5
+            put(5 * e * ease((age - k * 0.15) / 0.3), bx, by, 2, 1)
+          end
+        end
+      end
+    end
+    -- a moment: a slow whirlpool opens in the middle, its arms turning
     local ma = K.moment_age
-    if ma < 8 then
-      local a = ease(ma / 0.8) * (1 - ease((ma - 3) / 5))
-      local sx, sy = 64 + 2 * math.cos(ma * 1.3), 32 + math.sin(ma * 1.3)
-      put(6 * a, sx, sy, 2, 1); put(3 * a, sx, sy + 1, 1, 1)
+    if ma < 14 then
+      local e = ease(ma / 2) * (1 - ease((ma - 9) / 5))
+      for arm = 0, 2 do
+        for k = 0, 16 do
+          local r = 2 + k * 1.1
+          local a = arm * K.TAU / 3 + k * 0.32 - ma * 1.4
+          put(e * (5 - k * 0.2), 64 + cos(a) * r * 1.6, 32 + sin(a) * r, 2, 1)
+        end
+      end
     end
     -- a shimmering dotted line joins two leaves whose phases line up
     for i = 1, np - 1 do
@@ -143,14 +256,52 @@ return function(K)
         d = math.min(d, 1 - d)
         if d < 0.12 then
           local x0, y0, x1, y1 = pts[i][1], pts[i][2], pts[j][1], pts[j][2]
-          local n = math.max(2, math.floor(math.max(math.abs(x1 - x0), math.abs(y1 - y0)) / 2))
+          local n = math.max(2, floor(math.max(math.abs(x1 - x0), math.abs(y1 - y0)) / 2))
           local base = (1 - d / 0.12) * 5 * (0.8 + 0.5 * hi)
           for s = 1, n - 1 do
             local u = s / n
-            local lv = base * (0.55 + 0.45 * math.sin(T * (5 + 4 * hi) + s * 0.9 + i * j))
+            local lv = base * (0.55 + 0.45 * sin(T * 6 + s * 0.9 + i * j))
             put(lv, x0 + (x1 - x0) * u, y0 + (y1 - y0) * u, 1, 1)
           end
         end
+      end
+    end
+    -- incidents
+    local inc = K.inc
+    if inc then
+      local e, u = inc.e, inc.u
+      if inc.name == "strider" then
+        -- a water strider skates in short glides, four dimples under its feet
+        local glides = floor(inc.age / 1.5)
+        local f = ease(clamp((inc.age % 1.5) / 0.5, 0, 1))
+        local x = 20 + inc.s * 20 + (glides + f) * 8
+        local y = 18 + inc.s2 * 28 + sin(glides * 1.7) * 4
+        put(6 * e, x - 1, y, 4, 1)
+        for k = -1, 1, 2 do
+          put(4 * e, x - 3, y + k * 3, 1, 1); put(4 * e, x + 5, y + k * 3, 1, 1)
+          put(3 * e, x - 2, y + k * 2, 1, 1); put(3 * e, x + 4, y + k * 2, 1, 1)
+          K.ring(x - 3, y + k * 3, 1.5 + (1 - f) * 2, 0.7, 3.5 * e, 8)
+          K.ring(x + 5, y + k * 3, 1.5 + (1 - f) * 2, 0.7, 3.5 * e, 8)
+        end
+      elseif inc.name == "leaf" then
+        -- a big leaf drifting through on the current, turning slowly
+        local x = -10 + u * 150
+        local y = 30 + sin(u * 4 + inc.s * 6) * 10
+        local a = u * 5 + inc.s * 6
+        leaf(x, y, cos(a), sin(a), 8 * e, 3)
+        leaf(x + 2, y + 2, cos(a), sin(a), 5 * e, 2)
+        put(1.5 * e, x - 3, y + 4, 8, 2)                    -- its shadow on the bed
+      else
+        -- a fish's shadow passes under: a dim long shape, its back a little
+        -- lighter, the tail sweeping
+        local dir = inc.s > 0.5 and 1 or -1
+        local x = dir > 0 and (-16 + u * 160) or (144 - u * 160)
+        local y = 26 + inc.s2 * 14 + sin(u * 7) * 3
+        local tail = sin(K.T * 4) * 1.5
+        put(1.8 * e, x - 5 * dir, y - 1, 11, 3)
+        put(2.6 * e, x - 3 * dir, y, 7, 1)
+        put(1.5 * e, x - 9 * dir, y - 1 + tail, 3, 2)
+        put(1.5 * e, x + 2 * dir, y - 2, 3, 1); put(1.5 * e, x + 2 * dir, y + 2, 3, 1)
       end
     end
     K.glitter(sample)
