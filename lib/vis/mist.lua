@@ -49,16 +49,28 @@ return function(K)
   -- each kind of thing opens its own shape of clear patch: half width, half height
   local SHAPE = {{13, 15}, {22, 8}, {26, 10}, {15, 17}}
 
-  -- how open the fog is at a point (0 = as thick as it is, 1 = clear)
-  local function openness(x, y)
-    local o = 0
+  -- how open the fog is at a point (0 = as thick as it is, 1 = clear). the
+  -- patches open this frame are listed once (centre, half sizes, amount)
+  local OPEN, nopen = {}, 0
+  local function list_open()
+    nopen = 0
     for _, c in ipairs(clears) do
       local age = K.T - c.t0
       local a = ease(age / 1.4) * (1 - ease((age - 4) / 3))
       if a > 0 then
         local sh = SHAPE[c.slot] or SHAPE[1]
-        local dx, dy = (x - c.x) / sh[1], (y - c.y + 6) / sh[2]
+        OPEN[nopen + 1], OPEN[nopen + 2], OPEN[nopen + 3], OPEN[nopen + 4], OPEN[nopen + 5] = c.x, c.y - 6, sh[1], sh[2], a
+        nopen = nopen + 5
+      end
+    end
+  end
+  local function openness(x, y)
+    local o = 0
+    for i = 1, nopen, 5 do
+      local dx, dy = (x - OPEN[i]) / OPEN[i + 2], (y - OPEN[i + 1]) / OPEN[i + 3]
+      if dx < 1.27 and dx > -1.27 and dy < 1.27 and dy > -1.27 then
         local d = dx * dx + dy * dy
+        local a = OPEN[i + 4]
         if d < 1.6 then o = math.max(o, a * (1 - d) * 0.8 + 0.2 * a * (1.6 - d) / 1.6) end
       end
     end
@@ -202,7 +214,8 @@ return function(K)
       end
     end
     local dx = K.drift_x
-    local any = #clears > 0
+    list_open()
+    local any = nopen > 0
     local gap = 10
     local wmul = 1 + 0.9 * mid
     for y = 2, 61, 2 do
