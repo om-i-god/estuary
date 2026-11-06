@@ -13,13 +13,13 @@
 -- the beach; a passing moment lets a patch of sunlight cross the sea. the
 -- dune grass close by bends in the wind. two small shore birds keep just
 -- ahead of the wash, pecking; now and then a gull glides along the shore, a
--- crab scuttles over the sand, or a tangle of weed rides the wash
+-- crab scuttles over the sand, or driftwood rides the wash
 return function(K)
   local M = {}
   local put, A, clamp, ease = K.put, K.A, K.clamp, K.ease
   local sin, floor = math.sin, math.floor
 
-  M.incidents = {{"gull", 14}, {"crab", 16}, {"weed", 20}}
+  M.incidents = {{"gull", 14}, {"crab", 16}, {"driftwood", 20}}
   local MARK_MAX = 10
   local marks = {}
   local sand_top = {}                     -- per column: where the dry sand starts
@@ -39,11 +39,8 @@ return function(K)
   function M.clear() wet_y, marks = {}, {} end
 
   function M.note(slot, midi)
-    marks[#marks + 1] = {slot = slot, x = K.px(midi), u = K.pu(midi), t0 = K.T}
-    if #marks > MARK_MAX then
-      -- (the oldest goes once it has nearly faded; till then a new note waits)
-      if K.T - marks[1].t0 > 3.5 then table.remove(marks, 1) else marks[#marks] = nil end
-    end
+    -- (when the list is full, the oldest mark fades out quickly)
+    K.cap_add(marks, {slot = slot, x = K.px(midi), u = K.pu(midi), t0 = K.T}, MARK_MAX)
   end
 
   -- the dry sand's stipple and ripple marks, fixed per column (so the beach
@@ -169,9 +166,9 @@ return function(K)
       local yf = math.min(62, yl + reach)
       front[c] = yf
       fronts[c] = yf
-      put(5 + breath * 3.5, x, yl, 2, 1)
+      put(5 + breath * 3.5 + K.bj(c), x, yl, 2, 1)
       -- the damp strip the sea always keeps dark-bright just above the line
-      if c % 3 ~= 0 then put(1.5 + breath, x, yl - 2, 2, 1) end
+      if c % 3 ~= 0 then put(1.5 + breath + K.bj(c + 64), x, yl - 2, 2, 1) end
       if wet > 0.02 then put(2 + wet * 3, x, yl - 1, 2, 1) end
       -- where the last wash reached: it creeps back up slowly as it drains
       local wy = wet_y[c] or yf
@@ -238,9 +235,10 @@ return function(K)
     for i = #marks, 1, -1 do
       local mk = marks[i]
       local age = T - mk.t0
-      if age > 5 then table.remove(marks, i)
+      local cf, done = K.cap_fade(mk)
+      if age > 5 or done then table.remove(marks, i)
       else
-        local e = 1.2 * ease(age / 0.2) * (1 - ease((age - 1.2) / 3.8))
+        local e = (1.2 * ease(age / 0.2) * (1 - ease((age - 1.2) / 3.8))) * cf
         local x = mk.x
         local fy = fronts[x // 2] or 50
         if mk.slot == 1 then
@@ -313,18 +311,18 @@ return function(K)
         local x = 14 + inc.s * 40 + (runs + ease(f)) * 8
         local y = clamp(55 + inc.s2 * 5, 30, 61)
         local leg = (f > 0 and f < 1 and sin(K.NOW * 24) > 0) and 1 or 0
-        put(6 * e, x - 2, y - 1, 5, 2)
-        put(4 * e, x - 4, y - leg, 2, 1); put(4 * e, x + 3, y - 1 + leg, 2, 1)
-        put(4 * e, x - 4, y + 1 - leg, 1, 1); put(4 * e, x + 4, y + leg, 1, 1)
-        put(5 * e, x - 3, y - 3, 1, 2); put(5 * e, x + 3, y - 3, 1, 2)
-        put(1.5 * e, x - 2, y + 2, 5, 1)
+        put(7.5 * e, x - 2, y - 1, 5, 2)
+        put(5 * e, x - 4, y - leg, 2, 1); put(5 * e, x + 3, y - 1 + leg, 2, 1)
+        put(5 * e, x - 4, y + 1 - leg, 1, 1); put(5 * e, x + 4, y + leg, 1, 1)
+        put(6 * e, x - 3, y - 3, 1, 2); put(6 * e, x + 3, y - 3, 1, 2)
+        put(2 * e, x - 3, y + 2, 7, 1)
       else
         -- a branch of driftwood rides the wash up and back, foam round it
         local x = 66 + inc.s * 40
         local y = fronts[floor(x) // 2] or 50
-        put(5 * e, x - 7, y - 1, 6, 1); put(5.5 * e, x - 2, y - 2, 7, 1); put(4.5 * e, x + 4, y - 3, 3, 1)
-        put(4 * e, x - 4, y - 3, 1, 2); put(4 * e, x + 2, y - 4, 1, 2)
-        put(3 * e, x - 9, y + 1, 18, 1)
+        put(6 * e, x - 7, y - 1, 6, 1); put(6.5 * e, x - 2, y - 2, 7, 1); put(5.5 * e, x + 4, y - 3, 3, 1)
+        put(5 * e, x - 4, y - 3, 1, 2); put(5 * e, x + 2, y - 4, 1, 2)
+        put(3.5 * e, x - 9, y + 1, 18, 1)
       end
     end
     K.glitter(sample)

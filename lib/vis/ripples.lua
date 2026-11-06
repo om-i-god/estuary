@@ -70,9 +70,10 @@ return function(K)
   local function persp(y) return 0.5 + 0.5 * clamp((y - WL) / 50, 0, 1) end
 
   local function add_ring(x, y, lvl, kind, delay)
-    rings[#rings + 1] = {x = x, y = y, t0 = K.T + (delay or 0), lvl = lvl, a0 = K.rnd() * K.TAU,
-      rad = 0, lv = 0, kind = kind or 1}
-    while #rings > RING_MAX do table.remove(rings, 1) end
+    -- (when the pond already holds as many rings as it can, the oldest
+    -- fades out quickly)
+    K.cap_add(rings, {x = x, y = y, t0 = K.T + (delay or 0), lvl = lvl, a0 = K.rnd() * K.TAU,
+      rad = 0, lv = 0, kind = kind or 1}, RING_MAX)
   end
 
   function M.note(slot, midi)
@@ -82,8 +83,7 @@ return function(K)
       add_ring(x, y, 1, 2); add_ring(x, y, 0.6, 2, 0.35)
     elseif slot == 3 then
       add_ring(x, y, 1, 3)
-      drops[#drops + 1] = {x = x, y = y, t0 = K.T}
-      if #drops > 4 then table.remove(drops, 1) end
+      K.cap_add(drops, {x = x, y = y, t0 = K.T}, 4)
     elseif slot == 4 then
       add_ring(x - 3, y, 0.7, 4); add_ring(x + 3, y + 1, 0.6, 4, 0.12); add_ring(x, y - 1, 0.5, 4, 0.25)
     else
@@ -101,6 +101,7 @@ return function(K)
       lvl = lvl * fb
       k = k + 1
     end
+    -- (echoes waiting to land are not drawn yet: dropping the oldest shows nothing)
     while #pending > 24 do table.remove(pending, 1) end
   end
 
@@ -135,6 +136,30 @@ return function(K)
   end
 
   local function sample(u, v) return u * 127, WL + 3 + v * 46 end
+
+  -- what the reflection rows need, set once a frame (or once a row) so the
+  -- functions handed to K.streaks are made once, not every frame
+  local F_sky, F_hi, F_T, F_paw, F_pawe, F_d = 1, 0, 0, nil, 0, 1
+  local function skylv(y) return F_sky * (0.12 + 1.5 * (y / WL) ^ 2) end
+  -- the rings shove and stir the reflection; out_hi sparkles on it
+  local function nudge(x, y)
+    local dx, stir = 0, 0
+    if nl > 0 then dx, stir = refract(x, y) end
+    local sp = F_hi * 2.5 * math.max(0, sin(x * 0.9 + y * 1.3 + F_T * 6))
+    return dx + K.heave(x) * 0.3, stir * 4 + sp
+  end
+  -- ...and the moment's cat's paw roughens it where it passes
+  local function nudge2(x, y)
+    local dx, dl = nudge(x, y)
+    local paw = F_paw
+    if paw and math.abs(x - paw) < 24 then
+      local f = (1 - math.abs(x - paw) / 24) * F_pawe
+      dx, dl = dx + f * 4 * sin(y * 2.1 + F_T * 7), dl - f * 2
+    end
+    return dx, dl
+  end
+  local function keep_bank(x) return WL - F_d < K.at(bank, x) end
+
 
   -- the chord's clouds: tone i -> x, y, presence (gliding with the chord)
   local CL = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}}
@@ -191,12 +216,13 @@ return function(K)
       local sc = persp(r.y)
       local rad = math.max(0, age) * speed * sc
       local life = rad / (RING_R * sc * (r.kind == 4 and 0.4 or 1))
-      if life >= 1 or r.x < -RING_R or r.x > 128 + RING_R then
+      local cf, done = K.cap_fade(r)
+      if life >= 1 or done or r.x < -RING_R or r.x > 128 + RING_R then
         table.remove(rings, i)
       elseif age > 0 then
         local u, v = K.flow(r.x, r.y)
         r.x, r.y = r.x + u * DTS, clamp(r.y + v * DTS * 0.42, wl + 4, 62)
-        r.rad, r.lv = rad, 8 * r.lvl * (1 - life) ^ 1.4 * amp * ease(age / 0.18)
+        r.rad, r.lv = rad, 8 * r.lvl * (1 - life) ^ 1.4 * amp * ease(age / 0.18) * cf
         if r.lv >= 0.5 and rad >= 1 then nl = nl + 1; live[nl] = r end
       end
     end
@@ -206,7 +232,7 @@ return function(K)
     -- opens; the chord's clouds lie across it
     clouds()
     local sky = 1.2 + 1.1 * bloom
-    local function skylv(y) return sky * (0.12 + 1.5 * (y / WL) ^ 2) end
+    F_sky, F_hi, F_T = sky, hi, T
     for y = 0, wl - 1 do
       local v = skylv(y) + breath * 1.3 * (y / WL) ^ 2
       K.dither_row(v, y, bank)
@@ -215,38 +241,26 @@ return function(K)
           local c = CL[i]
           local dy = math.abs(y - c[2])
           if c[3] > 0 and dy < 2 then
+            -- (rows at the wisp's edge fade, so it glides up and down smoothly)
             local hw = (11 + i * 2) * (1 - dy * 0.35)
-            local l = (v + 1.6 + 0.8 * bloom + 1.5 * K.chord_glow) * c[3]
+            local l = (v + 1.6 + 0.8 * bloom + 1.5 * K.chord_glow) * c[3] * ease((2 - dy) / 0.8)
             local w = hw * 2 * (0.7 + 0.3 * K.hash(i * 9 + y, 12))
             put(l, c[1] - hw, y, w, 1)
             -- the lit top edge of the wisp
-            if y < c[2] then put(l + 1, c[1] - hw * 0.6, y, w * 0.5, 1) end
+            local top = clamp(c[2] - y, 0, 1)
+            if top > 0 then put((l + 1) * top, c[1] - hw * 0.6, y, w * 0.5, 1) end
           end
       end
     end
     K.blit(leaves, 1 + 0.6 * bloom)
-    put(1 + K.bar_pulse + breath, 0, wl, 128, 1)
+    K.hline(1.2 + breath * 1.6, wl, 0, 128, 8)
     -- the bank, the sky and its clouds lie in the water: the sky's glow comes
     -- back below the trees' reflection, then long pale streaks thin out
     -- toward you; rings bend and stir them, out_hi sparkles on them
-    local function nudge(x, y)
-      local dx, stir = 0, 0
-      if nl > 0 then dx, stir = refract(x, y) end
-      local sp = hi * 2.5 * math.max(0, sin(x * 0.9 + y * 1.3 + T * 6))
-      return dx + K.heave(x) * 0.3, stir * 4 + sp
-    end
     -- (the reflection stays where it is; a rising swell floods the bank's
     -- foot above it)
-    local paw = K.moment_age < 12 and (-20 + K.moment_age * 14) or nil
-    local pawe = paw and ease(K.moment_age / 1.2) * (1 - ease((K.moment_age - 8) / 4)) or 0
-    local function nudge2(x, y)
-      local dx, dl = nudge(x, y)
-      if paw and math.abs(x - paw) < 24 then
-        local f = (1 - math.abs(x - paw) / 24) * pawe
-        dx, dl = dx + f * 4 * sin(y * 2.1 + T * 7), dl - f * 2
-      end
-      return dx, dl
-    end
+    F_paw = K.moment_age < 12 and (-20 + K.moment_age * 14) or nil
+    F_pawe = F_paw and ease(K.moment_age / 1.2) * (1 - ease((K.moment_age - 8) / 4)) or 0
     for y = wl + 1, WL, 2 do
       K.streaks(sw * 1.6, y, 9, 13, K.drift_x * 0.3 + y * 5.1, nil, nudge2)
     end
@@ -254,7 +268,8 @@ return function(K)
       local y = WL + d
       local near = d < WL
       if (near and d % 2 == 1) or (not near and d % (2 + (d - WL) // 4) == 0) then
-        local keep = near and function(x) return WL - d < K.at(bank, x) end or nil
+        F_d = d
+        local keep = near and keep_bank or nil
         local l = near and skylv(WL - d) * 0.75 or sky * 0.9 * (1 - (d - WL) / 16)
         l = l + breath * 1.4 * (1 - d / 28)
         local w, gap = near and 8 or (4 + d // 5), near and 15 or (13 + d)
@@ -265,12 +280,23 @@ return function(K)
     for i = 1, 4 do
       local c = CL[i]
       if c[3] > 0.05 then
+        -- (shared between the two rows it falls between, so it glides)
         local ry = WL + (WL - c[2]) + 1
+        local y0 = floor(ry)
+        local fr = ry - y0
         local l = (1.2 + 0.8 * bloom + 1.2 * K.chord_glow) * c[3]
         for k = -1, 1 do
-          local y = ry + k * 2
           local hw = (9 + i * 2) * (1 - math.abs(k) * 0.3)
-          K.streaks(l, y, 4, 6, c[1] + k * 2 + i * 3, function(x) return math.abs(x - c[1]) < hw end, nudge2)
+          -- (only the span under the wisp is walked)
+          local a0, a1 = math.max(0, floor(c[1] - hw)), math.min(128, floor(c[1] + hw) + 1)
+          if a1 > a0 then
+            if k ~= 0 then
+              K.streaks(l, floor(ry + 0.5) + k * 2, 4, 6, c[1] + k * 2 + i * 3, nil, nudge2, a0, a1)
+            else
+              if fr < 0.85 then K.streaks(l * (1 - fr), y0, 4, 6, c[1] + i * 3, nil, nudge2, a0, a1) end
+              if fr > 0.15 then K.streaks(l * fr, y0 + 1, 4, 6, c[1] + i * 3, nil, nudge2, a0, a1) end
+            end
+          end
         end
       end
     end
@@ -340,16 +366,18 @@ return function(K)
     for i = #drops, 1, -1 do
       local d = drops[i]
       local age = T - d.t0
-      if age > 0.9 then table.remove(drops, i)
+      local cf, done = K.cap_fade(d)
+      if age > 0.9 or done then table.remove(drops, i)
       else
         local h = 9 * sin(math.pi * age / 0.9) * persp(d.y)
-        put(7 * (1 - age / 0.9) * ease(age / 0.08), d.x, d.y - h, 1, 1)
+        put(7 * (1 - age / 0.9) * ease(age / 0.08) * cf, d.x, d.y - h, 1, 1)
       end
     end
     -- water boatmen: tiny dimples, as many as the water sounds
     dimple_acc = dimple_acc + nat * 6 * DTS
     while dimple_acc >= 1 do
       dimple_acc = dimple_acc - 1
+      -- (no new dimple while the surface holds as many as it can)
       if #dimples < DIMPLE_MAX then
         dimples[#dimples + 1] = {x = 4 + K.rnd() * 120, y = wl + 6 + K.rnd() * 40, t0 = T}
       end
@@ -418,9 +446,11 @@ return function(K)
           local t0 = 1.5 + j * 3.2
           local a = clamp((inc.age - t0) / 1.3, 0, 1)
           if a > 0 and a < 1 then
+            -- (the arc eases in out of the water and back into it)
+            local ae = e * ease(a / 0.15) * ease((1 - a) / 0.15)
             local x, y = fx - 6 + a * 12, fy - 8 * sin(math.pi * a) * persp(fy)
-            put(9 * e, x, y, 2, 1); put(5 * e, x - 1 - (a > 0.5 and -2 or 0), y + 1, 1, 1)
-            put(3 * e, x, fy, 2, 1)
+            put(9 * ae, x, y, 2, 1); put(5 * ae, x - 1 - (a > 0.5 and -2 or 0), y + 1, 1, 1)
+            put(3 * ae, x, fy, 2, 1)
           end
           for k = 0, 2 do
             local age = inc.age - t0 - 1.3 - k * 0.5
@@ -435,10 +465,11 @@ return function(K)
         local x = dir > 0 and (-12 + u * 152) or (140 - u * 152)
         local y = 6 + 3 * sin(u * 3) + inc.s2 * 3
         local flap = sin(K.T * 2.6)
-        K.bird(x, y, 5 * e, flap, 2)
-        put(4 * e, x + dir * 2, y - 1, 2, 1)                 -- the head, tucked
+        K.bird(x, y, 6 * e, flap, 2)
+        put(5 * e, x + dir * 2, y - 1, 2, 1)                 -- the head, tucked
+        put(4 * e, x - dir * 5, y + 1, 3, 1)                 -- the legs, trailing
         local ry = wl + (wl - y) + 2
-        K.bird(x + K.heave(x) * 0.5, ry, 2.5 * e, -flap, 2)
+        K.bird(x + K.heave(x) * 0.5, ry, 3.5 * e, -flap, 2)
       else
         -- leaves drop from the tall tree one by one, land, and the current
         -- takes them
@@ -448,6 +479,7 @@ return function(K)
           local fall = clamp(age / 3.5, 0, 1)
           local land = 22 + ((inc.s + j * 0.37) % 1) * 14
           if age > 0 then
+            local le = e * ease(age / 0.4)
             local x, y
             if fall < 1 then
               x = lx0 + 5 * sin(fall * 7 + j) + fall * 6
@@ -456,10 +488,11 @@ return function(K)
               local t = age - 3.5
               x = lx0 + 6 + t * (2.5 + K.cur_u * 0.6)
               y = ly0 + land + K.heave(x) * 0.5
-              if t < 3 then K.ring(lx0 + 6, ly0 + land, 1.5 + t * 4, 0.42, 4.5 * e * (1 - t / 3), 16) end
+              if t < 3 then K.ring(lx0 + 6, ly0 + land, 1.5 + t * 4, 0.42, 5 * le * (1 - t / 3), 16) end
             end
             local tilt = fall < 1 and (sin(fall * 14 + j) > 0 and 1 or -1) or 0
-            put(7 * e, x - 1, y, 3, 1); put(4.5 * e, x + tilt, y - 1, 2, 1); put(3.5 * e, x + 2, y + 1, 1, 1)
+            put(8 * le, x - 2, y, 5, 1); put(5.5 * le, x + tilt, y - 1, 3, 1); put(4.5 * le, x + 2, y + 1, 2, 1)
+            put(2.5 * le, x - 1 + K.heave(x) * 0.3, y + 3, 4, 1)              -- and in the water
           end
         end
       end

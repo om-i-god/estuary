@@ -86,9 +86,11 @@ local glints, glint_acc = {}, 0
 local rseed = 1                         -- the visuals' own dice (themes, events)
 local gseed = 7                         -- the glitter's, so a note never moves it
 local iseed = 3                         -- the incidents'
-local breath, breath_kick = 0, 0        -- the bar's slow breath
+local breath, breath_mid, breath_kick = 0, 0, 0   -- the bar's slow breath
 local ch_now, ch_prev = {}, {}          -- the chord's tones, and the last chord's
+local ch_prev_p = {}                    -- how present each last tone was when the chord moved
 local ch_age = 999                      -- s since the chord moved
+local ch_glow, ch_glow_mid, ch_kick = 0, 0, 0           -- the glow a chord change brings: up ~1 s, down ~3 s, never a step
 local inc, inc_next, inc_last = nil, 0, 0  -- the incident on screen, when the next may start
 
 local GLINT_MAX = 20
@@ -555,9 +557,10 @@ end
 local function chord_at(i)
   local a, b = ch_prev[i], ch_now[i]
   local u = K.chord_mix or 1
-  if a and b then return a + (b - a) * u, 1 end
+  local pa = ch_prev_p[i] or 1
+  if a and b then return a + (b - a) * u, pa + (1 - pa) * u end
   if b then return b, u end
-  if a then return a, 1 - u end
+  if a then return a, pa * (1 - u) end
   return nil, 0
 end
 
@@ -588,11 +591,16 @@ local function physics(S)
   bar_pulse = follow(bar_pulse, bar_kick, 0.08, DT)
   bar_kick = bar_kick * math.exp(-DT / 0.7)
   -- the breath: up over ~0.5 s, down over ~1.5 s, never a step
-  breath = follow(breath, breath_kick, 0.3, DT)
-  breath_kick = breath_kick * math.exp(-DT / 1.6)
+  -- (two followers in a row: it starts rising gently, never with a step)
+  breath_mid = follow(breath_mid, breath_kick, 0.22, DT)
+  breath = follow(breath, breath_mid, 0.25, DT)
+  breath_kick = breath_kick * math.exp(-DT / 1.7)
   moment_age = moment_age + DT
   HV_A, HV_P = 0.6 + 2.6 * A[LO], -T * 0.55 + 0.8 * math.sin(T * 0.07)
   ch_age = ch_age + DT
+  ch_glow_mid = follow(ch_glow_mid, ch_kick, 0.35, DT)
+  ch_glow = follow(ch_glow, ch_glow_mid, 0.4, DT)
+  ch_kick = ch_kick * math.exp(-DT / 1.6)
   if #ch_now == 0 and type(S.chord) == "table" then chord_into(ch_now, S.chord) end
   -- where the step clock is between steps (0..1), for smooth phases
   local step = tonumber(S.step) or 0
@@ -605,6 +613,8 @@ local function incident_gap(first)
   if first then return 25 + 35 * irnd() end
   return 50 + 70 * irnd()
 end
+-- (the first one waits too, whether or not VIS.init is ever called)
+inc_next = incident_gap(true)
 
 local function incident_start(th, k)
   local list = th and th.incidents
@@ -644,13 +654,14 @@ local function sync(S)
   K.bar_pulse, K.moment_age, K.bar_t, K.bar_len = bar_pulse, moment_age, bar_t, bar_len
   K.breath = breath
   K.chord_age, K.chord_mix = ch_age, ease(ch_age / 3)
-  K.chord_glow = ch_age < 4 and math.sin(math.pi * clamp(ch_age / 4, 0, 1)) or 0
+  K.chord_glow = math.min(1, ch_glow * 2)
   K.inc = inc
   K.S = S
 end
 
 K.clamp, K.ease, K.follow, K.rnd, K.hash, K.px, K.opt = clamp, ease, follow, rnd, hash, px, opt
 K.cx, K.pu, K.chord_at, K.chord_now, K.chord_prev = cx, pu, chord_at, ch_now, ch_prev
+K.chord_prev_p = ch_prev_p
 K.put, K.profile, K.mass, K.row_above, K.gradient, K.dashes = put, profile, mass, row_above, gradient, dashes
 K.streaks, K.at, K.crowns = streaks, at, crowns
 K.bake, K.blit, K.dither_row = bake, blit, dither_row
@@ -687,6 +698,47 @@ function K.bird(x, y, lv, flap, size)
     put(lv * 0.8, x - 1, y + w, 1, 1); put(lv * 0.8, x + 1, y + w, 1, 1)
     put(lv * 0.6, x - 2, y + w, 1, 1); put(lv * 0.6, x + 2, y + w, 1, 1)
   end
+end
+
+-- a fixed level jitter (-0.42..0.42) for element k: added to the level of
+-- each of many same-level rects, a slowly rising light (the breath, the
+-- bloom) brightens them a few at a time instead of all in one frame
+local BJ = {}
+for k = 0, 255 do BJ[k] = (((k * 2654435761) >> 9) & 15) / 16 * 0.84 - 0.42 end
+local function bj(k)
+  if not (k > -1e9 and k < 1e9) then return 0 end      -- also NaN, nil-safe callers only
+  return BJ[(k // 1 | 0) & 255]
+end
+K.bj = bj
+
+-- a horizontal line cut into `seg`-px pieces, each with its own jitter
+function K.hline(l, y, x0, x1, seg)
+  seg = seg or 8
+  local yk = math.floor(y) * 131
+  for x = x0, x1 - 1, seg do put(l + bj(x + yk), x, y, math.min(seg, x1 - x), 1) end
+end
+
+-- capped lists of marks (rings, drops, lights): add an item; when the list
+-- already holds `max` live items, the oldest starts fading out (eased, over
+-- 0.3 s) instead of being cut while it is still bright
+local CAP_FADE = 0.3
+function K.cap_add(list, item, max)
+  local live, first = 0, nil
+  for i = 1, #list do
+    if not list[i].gone then live = live + 1; first = first or list[i] end
+  end
+  if live >= max and first then first.gone = T end
+  list[#list + 1] = item
+  -- (a hard ceiling, reached only if marks arrive faster than they can fade)
+  while #list > max + 8 do table.remove(list, 1) end
+end
+-- how much of a capped item is still there (1 .. 0), and whether it is gone
+-- (dur: the fade, 0.3 s unless given)
+function K.cap_fade(item, dur)
+  local g = item.gone
+  if not g then return 1, false end
+  local u = (T - g) / (dur or CAP_FADE)
+  return 1 - ease(u), u >= 1
 end
 
 -- fine glints at fixed points (pts: flat {x, y, ...}), each twinkling on
@@ -737,9 +789,11 @@ function VIS.init()
   glint_acc = 0
   for s = 1, 4 do slot_kick[s], slot_flash[s], slot_glow[s] = 0, 0, 0 end
   sw_state, sw_level, sw_disp, bar_kick, bar_pulse = "idle", 0, 0, 0, 0
-  breath, breath_kick = 0, 0
+  breath, breath_mid, breath_kick = 0, 0, 0
   chord_into(ch_now, nil); chord_into(ch_prev, nil)
+  for i = 1, 4 do ch_prev_p[i] = nil end
   ch_age = 999
+  ch_glow, ch_glow_mid, ch_kick = 0, 0, 0
   moment_age = 999
   step_seen, step_t, bar_t, bar_len = -1, 0, 0, 3.3
   for k = 1, 5 do raw[k], A[k] = 0, 0 end
@@ -794,15 +848,18 @@ function VIS.event(kind, a, b, c)
     if th and th.moment then th.moment() end
   elseif kind == "chord" then
     if type(a) == "table" then
-      -- the last chord as it stands now (mid-glide), then the new one
-      local was = {}
+      -- the last chord as it stands now (mid-glide), each tone in its place
+      -- and as present as it was, so a tone still fading in or out carries
+      -- on from where it is; then the new one
+      local was, wp = {}, {}
       for i = 1, 4 do
         local m, p = chord_at(i)
-        if m and p > 0.5 then was[#was + 1] = m end
+        if m and p > 0 then was[i], wp[i] = m, p end
       end
-      chord_into(ch_prev, was)
+      for i = 1, 4 do ch_prev[i], ch_prev_p[i] = was[i], wp[i] end
       chord_into(ch_now, a.chord)
       ch_age = 0
+      ch_kick = 1
       K.chord_mix = 0
       if th and th.chord then th.chord(a) end
     end

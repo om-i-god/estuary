@@ -20,7 +20,7 @@ return function(K)
   M.incidents = {{"rowboat", 26}, {"swan", 22}, {"geese", 12}}
 
   local WL = 38
-  local CLEAR_MAX = 8
+  local CLEAR_MAX = 6
   local clears
 
   -- the far shore: a low line of land with a few trees, very faint
@@ -39,11 +39,10 @@ return function(K)
   function M.clear() clears = {} end
 
   function M.note(slot, midi)
-    -- (while the fog already holds as many open patches as it can, a note
-    -- waits its turn rather than snapping an older patch shut)
-    if #clears >= CLEAR_MAX then return end
+    -- (when the fog already holds as many open patches as it can, the oldest
+    -- closes, eased over 0.8 s: fog never snaps shut)
     local x = K.px(midi)
-    clears[#clears + 1] = {x = x, y = WL + 4 + (1 - K.pu(midi)) * 12, t0 = K.T, slot = slot}
+    K.cap_add(clears, {x = x, y = WL + 4 + (1 - K.pu(midi)) * 12, t0 = K.T, slot = slot}, CLEAR_MAX)
   end
 
   -- each kind of thing opens its own shape of clear patch: half width, half height
@@ -56,7 +55,7 @@ return function(K)
     nopen = 0
     for _, c in ipairs(clears) do
       local age = K.T - c.t0
-      local a = ease(age / 1.4) * (1 - ease((age - 4) / 3))
+      local a = ease(age / 1.4) * (1 - ease((age - 4) / 3)) * K.cap_fade(c, 0.8)
       if a > 0 then
         local sh = SHAPE[c.slot] or SHAPE[1]
         OPEN[nopen + 1], OPEN[nopen + 2], OPEN[nopen + 3], OPEN[nopen + 4], OPEN[nopen + 5] = c.x, c.y - 6, sh[1], sh[2], a
@@ -79,6 +78,11 @@ return function(K)
 
   local function sample(u, v) return u * 127, WL + 3 + v * 22 end
 
+  -- the water rows' keep and sparkle, made once (inputs set each frame)
+  local F_d, F_y, F_T, F_hi = 2, 0, 0, 0
+  local function keep_shore(x) return WL - F_d < K.at(shore, x) + 2 end
+  local function water_nudge(x) return K.heave(x + F_y) * 0.5, F_hi * 4.5 * math.max(0, sin(x * 0.7 + F_y + F_T * 4)) end
+
   -- the chord's layers: tone i -> centre x, y, presence
   local LY = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}}
 
@@ -91,7 +95,7 @@ return function(K)
     local sun = ease(clamp(age / 2.5, 0, 1)) * ease(clamp((14 - age) / 3.5, 0, 1))
     -- density: thicker with out_lo and the water sounds, a swell rolls more in,
     -- the bloom thins it a little, the sun burns it back while it shines
-    local dens = clamp(0.3 + 0.4 * lo + 0.3 * nat + 0.35 * sw - 0.25 * sun - 0.1 * bloom, 0.12, 0.75)
+    local dens = clamp(0.3 + 0.4 * lo + 0.3 * nat + 0.35 * sw - 0.25 * sun - 0.1 * bloom, 0.12, 0.68)
     -- the sun: a pale disc behind the fog, high to the right; when a moment
     -- passes it comes through brighter, with a glow round it
     local sx, sy = 92 + 4 * sin(T * 0.02), 13
@@ -115,15 +119,17 @@ return function(K)
     -- the far shore, and its reflection, very faint
     K.blit(shore_l, 1 + 0.3 * bloom)
     for d = 2, 8, 2 do
-      K.streaks(1, WL + d, 7, 10, K.drift_x * 0.3 + d * 3, function(x) return WL - d < K.at(shore, x) + 2 end)
+      F_d = d
+      K.streaks(1, WL + d, 7, 10, K.drift_x * 0.3 + d * 3, keep_shore)
     end
-    put(1.5 + breath, 0, WL, 128, 1)
+    K.hline(1.5 + breath, WL, 0, 128, 8)
     -- still water: long faint streaks, the light lying on it, sparkling
     -- with out_hi
+    F_T, F_hi = T, hi
     for y = WL + 3, 63, 3 do
       local d = (y - WL) / 26
-      K.streaks(1 + bloom * 0.6 + d * 0.5 + breath, y, 8 + d * 10, 30 + d * 10, K.drift_x * (0.2 + d * 0.4) + y * 7.1, nil,
-        function(x) return K.heave(x + y) * 0.5, hi * 4.5 * math.max(0, sin(x * 0.7 + y + T * 4)) end)
+      F_y = y
+      K.streaks(1 + bloom * 0.6 + d * 0.5 + breath, y, 8 + d * 10, 30 + d * 10, K.drift_x * (0.2 + d * 0.4) + y * 7.1, nil, water_nudge)
     end
     -- the water sounds lap at the near edge
     if nat > 0.03 then
@@ -139,8 +145,9 @@ return function(K)
     for i = #clears, 1, -1 do
       local c = clears[i]
       local cage = T - c.t0
-      local a = ease(cage / 1.4) * (1 - ease((cage - 4) / 3))
-      if cage > 7 then table.remove(clears, i)
+      local cf, done = K.cap_fade(c, 0.8)
+      local a = ease(cage / 1.4) * (1 - ease((cage - 4) / 3)) * cf
+      if cage > 7 or done then table.remove(clears, i)
       elseif a > 0.02 then
         local lv = 6.5 * a
         local bob = K.heave(c.x) * 0.4
@@ -184,9 +191,9 @@ return function(K)
         local x = -12 + u * 152
         local y = WL + 3
         local row = sin(inc.age * 1.8)
-        put(4 * e, x - 5, y, 11, 1); put(3.5 * e, x - 1, y - 3, 2, 3)
-        put(3 * e, x - 4 + row * 2, y + 1, 1, 1); put(3 * e, x + 4 + row * 2, y + 1, 1, 1)
-        for d = 2, 6, 2 do put(2 * e, x - 4 + K.heave(x + d) * 0.5, y + d, 9, 1) end
+        put(5.5 * e, x - 6, y, 13, 1); put(4.5 * e, x - 5, y + 1, 11, 1); put(5 * e, x - 1, y - 4, 2, 4)
+        put(4 * e, x - 5 + row * 2, y + 2, 1, 1); put(4 * e, x + 5 + row * 2, y + 2, 1, 1)
+        for d = 3, 7, 2 do put(2.5 * e, x - 5 + K.heave(x + d) * 0.5, y + d, 11, 1) end
       elseif inc.name == "swan" then
         -- a swan glides by, its neck curved, its wake spreading
         local dir = inc.s > 0.5 and 1 or -1

@@ -51,6 +51,13 @@ return function(K)
   end
   local hill_y = {0, 0, 0, 0}
 
+  -- a window's sky, made once (its light and water line set per window)
+  local F_sky, F_wl = 1, 0
+  local function window_sky(y)
+    local d = (F_wl - y) / 12
+    return d < 1 and F_sky * (1 - d) ^ 1.5 or 0
+  end
+
   local function sample(u, v)
     local i = floor(u * 4) + 1
     return 6 + (i - 1) * 31 + 2 + v * (CARD_W - 5), card_wl[i]
@@ -166,11 +173,16 @@ return function(K)
       local age = T - ans[i]
       if age < 3.2 then a = ease(age / 0.45) * (1 - ease((age - 0.6) / 2.6)) end
       -- the frame
+      -- (in short pieces, each rounding its light a little differently, so
+      -- the frame brightens a few pieces at a time)
       local edge = (on and 3 or 2) + f * 3.5 + breath * 1.5
-      put(edge, x0, y0, CARD_W, 1)
-      put(edge, x0, y0 + CARD_H - 1, CARD_W, 1)
-      put(edge, x0, y0, 1, CARD_H)
-      put(edge, x0 + CARD_W - 1, y0, 1, CARD_H)
+      K.hline(edge, y0, x0, x0 + CARD_W, 9)
+      K.hline(edge, y0 + CARD_H - 1, x0, x0 + CARD_W, 9)
+      for yy = y0 + 1, y0 + CARD_H - 2, 8 do
+        local hh = math.min(8, y0 + CARD_H - 1 - yy)
+        put(edge + K.bj(yy * 3 + i), x0, yy, 1, hh)
+        put(edge + K.bj(yy * 5 + i + 77), x0 + CARD_W - 1, yy, 1, hh)
+      end
       -- the water in this window: the shared heave at this spot, raised by a
       -- swell, with chop from the sound and the water level
       local sp = SPOT[i]
@@ -186,22 +198,20 @@ return function(K)
       local pass = bird_x and bird_e * clamp(1 - math.abs(bird_x - (x0 + 13)) / 30, 0, 1) or 0
       local sky = 1.2 + 1.3 * K.bloom + lit + breath * 0.8 + pass * 3 + K.chord_glow * 0.8
       local rocky = i == 4
-      K.gradient(y0 + 2, floor(wl) - 1, function(y)
-        local d = (wl - y) / 12
-        return d < 1 and sky * (1 - d) ^ 1.5 or 0
-      end, rocky and ROCKP or nil, x0 + 1, x0 + CARD_W - 1)
+      F_sky, F_wl = sky, wl
+      K.gradient(y0 + 2, floor(wl) - 1, window_sky, rocky and ROCKP or nil, x0 + 1, x0 + CARD_W - 1)
       -- the chord's hills: this window's far line at its tone's height
       local cm, cp = K.chord_at(i)
       if cm then
         hill_y[i] = clamp(wl - 2 - (cm - 36) / 40 * 9, y0 + 4, wl - 1)
         local hl = (2.2 + 0.8 * K.bloom + 2.8 * K.chord_glow) * cp
         local h = HILL[i]
-        for c = 0, 11 do
-          local top = floor(hill_y[i] - h[c] + 0.5)
-          local xx = x0 + 1 + c * 2
+        for c = 0, 7 do
+          local top = floor(hill_y[i] - h[c] + 0.5 + K.bj(c * 7 + i))
+          local xx = x0 + 1 + c * 3
           if top < wl - 1 and not (rocky and in_rock(xx, top)) then
-            put(hl, xx, top, 2, 1)
-            if c % 3 == 1 and wl - 1 - top > 1 then put(hl * 0.4, xx, top + 1, 1, floor(wl) - top - 1) end
+            put(hl, xx, top, 3, 1)
+            if c % 3 == 1 and wl - 1 - top > 1 then put(hl * 0.4, xx + 1, top + 1, 1, floor(wl) - top - 1) end
           end
         end
       end
@@ -288,18 +298,22 @@ return function(K)
       local e = inc.e
       local hx = x0 + 15
       local wl = card_wl[3]
-      if inc.u < 0.75 then
-        -- standing in the shallows: legs, body, the long neck, stabbing now
-        -- and then
-        local stab = (inc.age % 4 > 3.4) and 2 or 0
-        put(4 * e, hx, wl - 1, 1, 3); put(4 * e, hx + 2, wl - 1, 1, 3)
-        put(5 * e, hx - 1, wl - 4, 5, 2)
-        put(5 * e, hx + 3, wl - 7 + stab, 1, 3)
-        put(5.5 * e, hx + 4, wl - 7 + stab, 2, 1)
-      else
-        -- (lifting away inside its window)
-        local f = (inc.u - 0.75) / 0.25
-        K.bird(hx - 2 + f * 3, wl - 6 - f * 12, 5 * e, sin(K.NOW * 3), 1)
+      -- standing in the shallows, then lifting away inside its window; the
+      -- standing bird and the flying one crossfade over ~0.45 s
+      local lift = clamp((inc.age - 0.72 * inc.dur) / 0.45, 0, 1)
+      local se, fe = e * (1 - lift), e * lift
+      if se > 0.01 then
+        -- legs, body, the long neck, dipping now and then, its reflection
+        local stab = 2 * math.max(0, sin(inc.age * 1.6)) ^ 4
+        put(5 * se, hx, wl - 2, 1, 4); put(5 * se, hx + 2, wl - 2, 1, 4)
+        put(6.5 * se, hx - 2, wl - 6, 6, 3); put(5 * se, hx - 3, wl - 5, 1, 1)
+        put(6.5 * se, hx + 3, wl - 10 + stab, 1, 4)
+        put(7 * se, hx + 4, wl - 10 + stab, 3, 1)
+        for d = 2, 6, 2 do put(2.5 * se, hx - 1 + K.heave(hx + d) * 0.4, wl + d, 5, 1) end
+      end
+      if fe > 0.01 then
+        local f = clamp((inc.age - 0.72 * inc.dur) / (0.28 * inc.dur), 0, 1)
+        K.bird(hx + f * 4, wl - 6 - f * 12, 7 * fe, sin(K.NOW * 3), 2)
       end
     end
     K.glitter(sample)

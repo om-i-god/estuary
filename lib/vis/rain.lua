@@ -77,23 +77,32 @@ return function(K)
     local x = math.min(K.px(midi), 120)
     if slot == 2 then
       for k = 0, 1 do
-        drops[#drops + 1] = {x = x - 2 + k * 4, y = -1 - k * 5, v = v * 1.1, t0 = K.T, lvl = 8, kind = 2}
+        K.cap_add(drops, {x = x - 2 + k * 4, y = -1 - k * 5, v = v * 1.1, t0 = K.T, lvl = 8, kind = 2}, DROP_MAX)
       end
     elseif slot == 4 then
-      drops[#drops + 1] = {x = x, y = -1, v = v * 0.55, t0 = K.T, lvl = 7, kind = 4}
+      K.cap_add(drops, {x = x, y = -1, v = v * 0.55, t0 = K.T, lvl = 7, kind = 4}, DROP_MAX)
     else
-      drops[#drops + 1] = {x = x, y = -1, v = v * (slot == 3 and 1.3 or 1), t0 = K.T, lvl = slot == 3 and 10 or 11, kind = slot}
+      K.cap_add(drops, {x = x, y = -1, v = v * (slot == 3 and 1.3 or 1), t0 = K.T, lvl = slot == 3 and 10 or 11, kind = slot}, DROP_MAX)
     end
-    while #drops > DROP_MAX do table.remove(drops, 1) end
+    -- (capped: when full, the oldest drop or ring fades out quickly)
   end
 
   local function add_splash(x, lvl, kind)
-    splashes[#splashes + 1] = {x = x, t0 = K.T, lvl = lvl, kind = kind or 1}
-    if #splashes > SPLASH_MAX then table.remove(splashes, 1) end
+    K.cap_add(splashes, {x = x, t0 = K.T, lvl = lvl, kind = kind or 1}, SPLASH_MAX)
+    -- (no new bubble while the water holds as many as it can)
     if kind == 4 and #bubbles < BUB_MAX then bubbles[#bubbles + 1] = {x = x, t0 = K.T} end
   end
 
   local function sample(u) local x = u * 92; return x, surf_y(x) - 1 end
+
+  -- the sky's light and the reflection's keep, made once (their inputs are
+  -- set each frame)
+  local F_pale, F_bloom, F_breath, F_d = 1, 0, 0, 2
+  local function rain_sky(y)
+    local v = y < 37 and ((y - 29) / 8) ^ 2 * (0.55 + 0.2 * F_bloom) or 0.4 + F_pale * ((y - 37) / 16) ^ 1.5
+    return v + F_breath * 1.6 * clamp((y - 36) / 14, 0, 1)
+  end
+  local function keep_far(x) return GROUND - F_d * 1.4 < K.at(far, x) end
 
   -- the chord's clouds: tone i -> x, y, presence
   local CL = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}}
@@ -104,10 +113,8 @@ return function(K)
     local mid, hi, nat, lo = A[K.MID], A[K.HI], A[K.NAT], A[K.LO]
     -- the pale rainy sky low down, behind the trees
     local pale = 1.2 + 1.3 * bloom
-    K.gradient(28, GROUND - 1, function(y)
-      local v = y < 37 and ((y - 29) / 8) ^ 2 * (0.55 + 0.2 * bloom) or 0.4 + pale * ((y - 37) / 16) ^ 1.5
-      return v + breath * 1.6 * clamp((y - 36) / 14, 0, 1)
-    end, far)
+    F_pale, F_bloom, F_breath = pale, bloom, breath
+    K.gradient(28, GROUND - 1, rain_sky, far)
     -- the far rain: curtains of strokes in the distance, as many as the
     -- water sounds bring
     curtain_x = curtain_x - DTS * (1.2 + 3 * sw)
@@ -174,8 +181,8 @@ return function(K)
     end
     for d = 2, 9, 2 do
       local y = GROUND + d
-      K.streaks(pale * 0.6 * (1 - d / 12) + breath * 2.6, y, 6, 8, K.drift_x * 0.5 + d * 3,
-        function(x) return GROUND - d * 1.4 < K.at(far, x) end)
+      F_d = d
+      K.streaks(pale * 0.6 * (1 - d / 12) + breath * 2.6, y, 6, 8, K.drift_x * 0.5 + d * 3, keep_far)
     end
     K.surface(0, GROUND + 4, 128, 64, 1, 8, 3)
     -- the rain on the water: fine rings everywhere, as many as the water
@@ -183,6 +190,7 @@ return function(K)
     fine_acc = fine_acc + nat * 9 * DTS
     while fine_acc >= 1 do
       fine_acc = fine_acc - 1
+      -- (no new ring while the water holds as many as it can)
       if #fine < FINE_MAX then fine[#fine + 1] = {x = K.rnd() * 124 + 2, y = GROUND + 1 + K.rnd() * 9, t0 = T} end
     end
     for i = #fine, 1, -1 do
@@ -200,11 +208,14 @@ return function(K)
       d.y = d.y + d.v * (0.8 + 0.5 * A[K.AMP]) * DTS
       d.x = clamp(d.x + wx * DTS, 1, 125)
       local sy = surf_y(d.x)
-      if d.y >= sy then
-        add_splash(d.x, d.lvl, d.kind)
+      local cf, done = K.cap_fade(d)
+      if done then
+        table.remove(drops, i)
+      elseif d.y >= sy then
+        add_splash(d.x, d.lvl * cf, d.kind)
         table.remove(drops, i)
       else
-        local lv = d.lvl * ease((T - d.t0) / 0.15) * (0.65 + 0.55 * A[K.AMP])
+        local lv = d.lvl * ease((T - d.t0) / 0.15) * (0.65 + 0.55 * A[K.AMP]) * cf
         local slant = wx / d.v
         if d.kind == 4 then
           -- a slow fat drip
@@ -240,11 +251,12 @@ return function(K)
       local s = splashes[i]
       local age = T - s.t0
       local life = age / 0.9
-      if life >= 1 then
+      local cf, done = K.cap_fade(s)
+      if life >= 1 or done then
         table.remove(splashes, i)
       else
         local y0 = surf_y(s.x)
-        local lv = s.lvl * 0.7 * (1 - life) ^ 1.2
+        local lv = s.lvl * 0.7 * (1 - life) ^ 1.2 * cf
         if s.kind == 2 then
           K.ring(s.x - 2, y0, 1 + age * 8, 0.28, lv, 8); K.ring(s.x + 2, y0 + 1, 1 + age * 7, 0.28, lv, 8)
         else
@@ -298,29 +310,35 @@ return function(K)
         local dir = inc.s > 0.5 and 1 or -1
         local x = dir > 0 and (-6 + u * 104) or (98 - u * 104)
         local y = surf_y(x)
-        put(5 * e, x - 2, y - 2, 5, 2); put(5.5 * e, x + 2 * dir, y - 4, 2, 2); put(4 * e, x + 3 * dir + (dir > 0 and 1 or -1), y - 3, 1, 1)
-        for k = 1, 6 do
+        put(7 * e, x - 3, y - 2, 6, 2); put(7.5 * e, x + 2 * dir, y - 4, 2, 2); put(5.5 * e, x + 3 * dir + (dir > 0 and 1 or -1), y - 3, 1, 1)
+        put(3 * e, x - 3, y + 1, 6, 1)                         -- its reflection
+        for k = 1, 7 do
           local wx = x - dir * k * 3
-          put(3 * e * (1 - k / 7), wx, y + k * 0.6, 2, 1); put(3 * e * (1 - k / 7), wx, y - 1 - k * 0.3, 2, 1)
+          put(4 * e * (1 - k / 8), wx, y + k * 0.6, 2, 1); put(4 * e * (1 - k / 8), wx, y - 1 - k * 0.3, 2, 1)
         end
       elseif inc.name == "birds" then
         -- a few birds cross under the cloud
-        for k = 0, 4 do
+        for k = 0, 5 do
           local x = -10 + u * 150 - k * 6 - (k % 2) * 3
           local y = 18 + k % 3 * 3 + sin(u * 6 + k) * 2
-          K.bird(x, y, 5 * e, sin(K.NOW * 6 + k), 1)
+          K.bird(x, y, 7 * e, sin(K.NOW * 6 + k), 1)
         end
       else
         -- a gust drives a curtain of rain across the water
         local gx = -30 + u * 190
         for k = 0, 14 do
           local x = gx + (k * 37 % 30) - 15
-          local y = 20 + (k * 13 % 30) + ((T * 30 + k * 7) % 8)
+          local ph = ((T * 30 + k * 7) % 8) / 8
+          local y = 20 + (k * 13 % 30) + ph * 8
           if x > -2 and x < 128 then
-            for j = 0, 2 do put(3 * e, x - j * 2, y + j * 2, 1, 2) end
+            -- (each stroke fades in and out along its short fall)
+            for j = 0, 2 do put(3 * e * sin(math.pi * ph), x - j * 2, y + j * 2, 1, 2) end
           end
         end
-        for k = 0, 8 do K.ring(gx - 12 + k * 3, GROUND + 3 + (k % 3) * 2, 1 + (T * 5 + k) % 4, 0.3, 3 * e, 6) end
+        for k = 0, 8 do
+          local rr = (T * 5 + k) % 4
+          K.ring(gx - 12 + k * 3, GROUND + 3 + (k % 3) * 2, 1 + rr, 0.3, 3 * e * sin(math.pi * rr / 4), 6)
+        end
       end
     end
     K.glitter(sample)

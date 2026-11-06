@@ -38,11 +38,13 @@ return function(K)
     for c = 0, 63 do
       local t = floor(bank[c] + 0.5)
       for y = t + 2, WL - 1, 2 do
-        if K.hash(c * 64 + y, 43) < 0.3 then rec(1, c * 2 + (y // 2) % 2, y, 1, 1) end
+        if K.hash(c * 64 + y, 43) < 0.14 then rec(1, c * 2 + (y // 2) % 2, y, 1, 1) end
       end
     end
   end)
   local STARS = {}
+  -- glints on the water out_hi brings out
+  local WGLINT = K.scatter(44, 2, WL + 1, 126, WL + 13, 46)
   for i = 1, 7 do STARS[i] = {9 + (i - 1) * 18 + 7 * K.hash(i, 44), 4 + 16 * K.hash(i, 45)} end
 
   function M.init()
@@ -52,7 +54,8 @@ return function(K)
       for k = 1, L.n do
         local u = (k - 1 + 0.15 + 0.7 * K.hash(k, L.seed)) / L.n
         r[k] = {x = -4 + u * 136, h = L.h0 + (L.h1 - L.h0) * K.hash(k, L.seed + 7),
-          ph = K.hash(k, L.seed + 9) * 6, head = K.hash(k, L.seed + 11) > (li == 3 and 0.2 or 0.6)}
+          ph = K.hash(k, L.seed + 9) * 6, head = K.hash(k, L.seed + 11) > (li == 3 and 0.2 or 0.6),
+          foot = li == 1 and (1 + floor(4 * K.hash(k, L.seed + 13))) or (li == 2 and floor(2.5 * K.hash(k, L.seed + 13)) or 0)}
       end
       layers[li] = r
     end
@@ -77,8 +80,7 @@ return function(K)
       -- the nearest reed nods, and the water at its foot rings
       local key = nearest(x)
       if key then nods[key] = K.T end
-      rings[#rings + 1] = {x = x, y = WL + 3, t0 = K.T, small = true}
-      while #rings > RING_MAX do table.remove(rings, 1) end
+      K.cap_add(rings, {x = x, y = WL + 3, t0 = K.T, small = true}, RING_MAX)
     elseif slot == 2 then
       -- the nearest reed's head lets go a few seeds
       local key, r = nearest(x)
@@ -86,17 +88,17 @@ return function(K)
       local li = key and key // 100 or 2
       local h = r and r.h or 20
       for k = 1, 5 do
+        -- (no more seeds while the air already holds as many as it can)
         if #seeds < SEED_MAX then
           seeds[#seeds + 1] = {x = x, y = WL - h - 4 - (li == 3 and 3 or 0), t0 = K.T, vx = 3 + 4 * K.rnd(), vy = -2 - 3 * K.rnd(), ph = K.rnd() * 6}
         end
       end
     elseif slot == 3 then
-      if #flies >= FLY_MAX then table.remove(flies, 1) end
-      flies[#flies + 1] = {x = x, y = 12 + (1 - K.pu(midi)) * 20, t0 = K.T, dir = K.rnd() < 0.5 and -1 or 1, ph = K.rnd() * 6,
-        life = 4 + math.min(3, tonumber(dur) or 1)}
+      -- (with the most dragonflies about, the oldest fades away quickly)
+      K.cap_add(flies, {x = x, y = 12 + (1 - K.pu(midi)) * 20, t0 = K.T, dir = K.rnd() < 0.5 and -1 or 1, ph = K.rnd() * 6,
+        life = 4 + math.min(3, tonumber(dur) or 1)}, FLY_MAX)
     else
-      rings[#rings + 1] = {x = x, y = WL + 4 + (1 - K.pu(midi)) * 8, t0 = K.T}
-      while #rings > RING_MAX do table.remove(rings, 1) end
+      K.cap_add(rings, {x = x, y = WL + 4 + (1 - K.pu(midi)) * 8, t0 = K.T}, RING_MAX)
     end
   end
 
@@ -127,8 +129,8 @@ return function(K)
     for s = 0, h - 1, seg do
       local u = s / h
       local x = r.x + l * u * u
-      put(base_l, x, WL - s - seg, L.w, seg)
-      tx, ty = x, WL - s - seg
+      put(base_l + K.bj(s * 13 + key), x, WL - r.foot - s - seg, L.w, seg)
+      tx, ty = x, WL - r.foot - s - seg
     end
     -- a long blade leaving the near reeds partway up, arching out and over
     if L.w == 2 then
@@ -149,6 +151,11 @@ return function(K)
 
   local function sample(u, v) return u * 127, WL + 2 + v * 11 end
 
+  -- the bank's glow and the water's shimmer, made once (inputs set each frame)
+  local F_glow, F_d, F_T, F_hi = 1, 2, 0, 0
+  local function bank_glow(y) return F_glow * clamp((y - WL + 13) / 13, 0, 1) ^ 0.7 end
+  local function water_nudge(x) return K.heave(x + F_d * 5) * 0.4, F_hi * 5 * math.max(0, sin(x * 0.8 + F_d + F_T * 6)) end
+
   function M.draw(S)
     local T, DTS = K.T, K.DTS
     local bloom, breath, sw = K.bloom, K.breath, K.sw_disp
@@ -157,22 +164,27 @@ return function(K)
     local glow = 0.75 + 0.7 * bloom
     -- open sky: a low glow hugging the bank, warmer with the bloom and
     -- breathing on the bar, a few first stars above
-    K.gradient(WL - 12, WL - 1, function(y)
-      return (0.6 + 0.45 * bloom + 1.8 * breath + 0.9 * K.chord_glow) * clamp((y - WL + 13) / 13, 0, 1) ^ 1.5
-    end, bank)
+    -- (strong enough to lie as a smooth band over the bank, not a hatch)
+    F_glow = 1.15 + 0.35 * bloom + 1.6 * breath + 0.9 * K.chord_glow
+    K.gradient(WL - 12, WL - 1, bank_glow, bank)
     for i, s in ipairs(STARS) do
       put((1.4 - 0.5 * bloom) * (1 + 0.5 * sin(T * 0.5 + i * 2.1)), s[1], s[2], 1, 1)
     end
-    -- the chord's stars: brighter, a small cross each, lying in the water too
+    -- the chord's stars: brighter, a small cross each, lying in the water
+    -- too; they glide to their new places, their light shared between the
+    -- pixels they pass between
     for i = 1, 4 do
       local m, p = K.chord_at(i)
       if m and p > 0.02 then
         local x = K.cx(m) + K.drift_x * 0.02
         local y = clamp(26 - (m - 36) / 40 * 22, 3, 30)
         local l = (6 + 2.5 * K.chord_glow) * p * (1.1 - 0.3 * bloom)
-        put(l, x, y, 1, 1)
-        put(l * 0.5, x - 1, y, 1, 1); put(l * 0.5, x + 1, y, 1, 1); put(l * 0.5, x, y - 1, 1, 1); put(l * 0.5, x, y + 1, 1, 1)
-        put(l * 0.25, x - 3, y, 2, 1); put(l * 0.25, x + 2, y, 2, 1); put(l * 0.25, x, y - 3, 1, 2); put(l * 0.25, x, y + 2, 1, 2)
+        local x0, y0 = floor(x), floor(y)
+        local fx, fy = x - x0, y - y0
+        put(l * (1 - fx) * (1 - fy), x0, y0, 1, 1); put(l * fx * (1 - fy), x0 + 1, y0, 1, 1)
+        put(l * (1 - fx) * fy, x0, y0 + 1, 1, 1); put(l * fx * fy, x0 + 1, y0 + 1, 1, 1)
+        local xr, yr = floor(x + 0.5), floor(y + 0.5)
+        put(l * 0.3, xr - 2, yr, 1, 1); put(l * 0.3, xr + 2, yr, 1, 1); put(l * 0.3, xr, yr - 2, 1, 1); put(l * 0.3, xr, yr + 2, 1, 1)
         local ry = WL + (WL - y) * 0.25 + 2
         if ry < 63 then put(l * 0.45, x - 1 + K.heave(x + ry) * 0.6, ry, 3, 1) end
         -- and the glow over the bank is warmer under it
@@ -209,21 +221,30 @@ return function(K)
     end
     -- the water: the glow comes back, broken by the current
     local wl = WL - floor(sw * 2 + 0.5)
-    for d = 2, 13, 2 do
-      local y = WL + d
-      local l = (glow + 0.6 + breath * 2.2 + K.chord_glow * 1.6) * (1 - d / 16)
-      K.streaks(l, y, 3 + (d * 7) % 4, 14 + d % 3, K.drift_x * (0.4 + d * 0.05) + d * 7, nil,
-        function(x) return K.heave(x + d * 5) * 0.4, hi * 5 * math.max(0, sin(x * 0.8 + d + T * 6)) end)
+    -- (a soft dithered glow lying on the water, broken by a few streaks of
+    -- light that the current slides: water and mud, not a ruled band)
+    F_T, F_hi = T, hi
+    local wv = glow + 0.6 + breath * 2.2 + K.chord_glow * 1.6
+    for d = 1, 13 do
+      if d <= 9 then K.dither_row(wv * 0.32 * (1 - d / 10) ^ 1.5, WL + d) end
+      if d % 3 == 2 then
+        F_d = d
+        K.streaks(wv * (1 - d / 16), WL + d, 2 + (d * 7) % 5, 17 + (d * 5) % 7, K.drift_x * (0.4 + d * 0.05) + d * 7, nil, water_nudge)
+      end
     end
-    put(2 + K.bar_pulse, 0, wl, 128, 1)
-    if wl < WL then put(1.5, 0, wl + 1, 128, 1) end
+    K.twinkle(WGLINT, hi, 7)
+    -- the water's edge: a broken line of light, not a rail
+    -- (lit where the light catches it, in uneven pieces)
+    K.streaks(1.8 + breath * 1.4, wl, 7, 11, K.drift_x * 0.2 + 3)
+    if wl < WL then K.streaks(1.2, wl + 1, 6, 13, K.drift_x * 0.3 + 8) end
     -- rings on the water
     for i = #rings, 1, -1 do
       local r = rings[i]
       local age = T - r.t0
-      if age > 3 then table.remove(rings, i)
+      local cf, done = K.cap_fade(r)
+      if age > 3 or done then table.remove(rings, i)
       else
-        local e = ease(age / 0.15) * (1 - age / 3)
+        local e = ease(age / 0.15) * (1 - age / 3) * cf
         if r.small then
           K.ring(r.x, r.y, 1.5 + age * 4.5, 0.3, 7.5 * e, 18, 0, WL, 64)
           K.ring(r.x, r.y + 1, 1 + age * 2.5, 0.3, 4 * e, 10, 0, WL, 64)
@@ -260,9 +281,10 @@ return function(K)
     for i = #flies, 1, -1 do
       local f = flies[i]
       local age = T - f.t0
-      if age > f.life then table.remove(flies, i)
+      local cf, done = K.cap_fade(f)
+      if age > f.life or done then table.remove(flies, i)
       else
-        local a = ease(age / 0.6) * ease((f.life - age) / 1)
+        local a = ease(age / 0.6) * ease((f.life - age) / 1) * cf
         local x = f.x + f.dir * (math.max(0, age - 2) ^ 1.4) * 6 + sin(age * 2.3 + f.ph) * 1.5
         local y = f.y + sin(age * 1.7 + f.ph) * 2
         local lv = 7 * a
@@ -280,42 +302,52 @@ return function(K)
       if inc.name == "heron" then
         -- a heron stands in the shallows, still, then lifts away
         local hx = 30 + inc.s * 50
-        if u < 0.7 then
-          local stab = (inc.age % 5 > 4.3) and 2 or 0
-          put(4 * e, hx, WL - 2, 1, 4); put(4 * e, hx + 2, WL - 2, 1, 4)
-          put(5 * e, hx - 2, WL - 7, 6, 3); put(4 * e, hx - 4, WL - 6, 2, 1)
-          put(5 * e, hx + 3, WL - 12 + stab, 1, 5); put(5.5 * e, hx + 4, WL - 12 + stab, 3, 1)
-          for d = 2, 8, 3 do put(2 * e, hx - 1 + K.heave(hx + d) * 0.5, WL + d, 4, 1) end
-        else
-          local f = (u - 0.7) / 0.3
-          K.bird(hx + f * 50, WL - 8 - f * 30, 5.5 * e, sin(K.NOW * 2.5), 2)
+        -- (standing and flying crossfade over ~0.45 s)
+        local lift = clamp((inc.age - 0.7 * inc.dur) / 0.45, 0, 1)
+        local se, fe = e * (1 - lift), e * lift
+        if se > 0.01 then
+          local stab = 2 * math.max(0, sin(inc.age * 1.3)) ^ 4
+          put(4 * se, hx, WL - 2, 1, 4); put(4 * se, hx + 2, WL - 2, 1, 4)
+          put(5 * se, hx - 2, WL - 7, 6, 3); put(4 * se, hx - 4, WL - 6, 2, 1)
+          put(5 * se, hx + 3, WL - 12 + stab, 1, 5); put(5.5 * se, hx + 4, WL - 12 + stab, 3, 1)
+          for d = 2, 8, 3 do put(2 * se, hx - 1 + K.heave(hx + d) * 0.5, WL + d, 4, 1) end
+        end
+        if fe > 0.01 then
+          local f = clamp((inc.age - 0.7 * inc.dur) / (0.3 * inc.dur), 0, 1)
+          K.bird(hx + f * 50, WL - 8 - f * 30, 5.5 * fe, sin(K.NOW * 2.5), 2)
         end
       elseif inc.name == "warbler" then
         -- a small bird swings on the tallest near reed, then flits off
         local r = layers[3][1 + floor(inc.s * #layers[3]) % #layers[3]]
         local l = lean(r, LAYERS[3], -1, 3)
         local bx, by = r.x + l * 0.8, WL - r.h * 0.8
-        if u < 0.8 then
+        -- (perched and flying crossfade over ~0.4 s)
+        local lift = clamp((inc.age - 0.8 * inc.dur) / 0.4, 0, 1)
+        local pe, fe = e * (1 - lift), e * lift
+        if pe > 0.01 then
           local sway = sin(K.T * 1.3) * 1.5
-          put(6 * e, bx - 2 + sway, by - 3, 4, 3); put(6 * e, bx + 2 + sway, by - 4, 2, 2)
-          put(4.5 * e, bx - 4 + sway, by - 1, 2, 1); put(5 * e, bx + 4 + sway, by - 3, 1, 1)
-          -- it sings: now and then its head tips up
-          if sin(K.T * 0.9) > 0.6 then put(5 * e, bx + 3 + sway, by - 6, 1, 2) end
-        else
-          local f = (u - 0.8) / 0.2
-          K.bird(bx + f * 30, by - f * 12, 5 * e, sin(K.NOW * 9), 1)
+          put(8 * pe, bx - 2 + sway, by - 3, 5, 3); put(8 * pe, bx + 2 + sway, by - 5, 2, 2)
+          put(6 * pe, bx - 5 + sway, by - 1, 3, 1); put(7 * pe, bx + 4 + sway, by - 4, 1, 1)
+          -- it sings: now and then its head tips up, eased
+          local sing = ease((sin(K.T * 0.9) - 0.5) / 0.3)
+          put(6 * pe * sing, bx + 3 + sway, by - 7, 1, 2)
+        end
+        if fe > 0.01 then
+          local f = clamp((inc.age - 0.8 * inc.dur) / (0.2 * inc.dur), 0, 1)
+          K.bird(bx + f * 30, by - f * 12, 7 * fe, sin(K.NOW * 9), 2)
         end
       else
         -- a fish jumps out of the shallows and back, rings after
         local fx, fy = 20 + inc.s * 80, WL + 6 + inc.s2 * 5
         local a = clamp((inc.age - 2) / 1.2, 0, 1)
         if a > 0 and a < 1 then
+          local ae = e * ease(a / 0.15) * ease((1 - a) / 0.15)
           local x, y = fx - 5 + a * 10, fy - 8 * sin(math.pi * a)
-          put(8 * e, x, y, 3, 1); put(4 * e, x - 1, y + 1, 1, 1)
+          put(9 * ae, x - 1, y, 4, 1); put(5 * ae, x - 2, y + 1, 2, 1)
         end
         for k = 0, 2 do
           local age = inc.age - 3.2 - k * 0.5
-          if age > 0 and age < 4 then K.ring(fx + 5, fy, 2 + age * 5, 0.35, 5 * e * (1 - age / 4), 18, 0, WL, 64) end
+          if age > 0 and age < 4 then K.ring(fx + 5, fy, 2 + age * 5, 0.35, 6.5 * e * (1 - age / 4) * ease(age / 0.3), 20, 0, WL, 64) end
         end
       end
     end

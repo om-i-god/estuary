@@ -77,11 +77,8 @@ return function(K)
     if slot == 1 then
       nearest(x, 3)
     else
-      marks[#marks + 1] = {slot = slot, x = x, u = K.pu(midi), t0 = K.T}
-      if #marks > MARK_MAX then
-        -- (the oldest goes once it has nearly faded; till then a new note waits)
-        if K.T - marks[1].t0 > 3.5 then table.remove(marks, 1) else marks[#marks] = nil end
-      end
+      -- (when the list is full, the oldest mark fades out quickly)
+      K.cap_add(marks, {slot = slot, x = x, u = K.pu(midi), t0 = K.T}, MARK_MAX)
     end
   end
 
@@ -130,6 +127,10 @@ return function(K)
 
   local function sample(u, v) return u * 127, HZ + 6 + v * 16 end
 
+  -- the sky's light, made once (its strength is set each frame)
+  local F_glow = 1
+  local function sky_glow(y) local u = (HZ - y) / 24; return F_glow * math.max(0, 1 - u) ^ 2.5 end
+
   -- the channels across the mud: y of channel k at x
   local function chan(k, x)
     if k == 1 then return HZ + 6 + 2 * sin(x * 0.05 + 1) end
@@ -149,8 +150,8 @@ return function(K)
       left = left - dt
     end
     -- the sky: pale low down, over the far shore, breathing on the bar
-    local glow = 0.85 + 0.7 * bloom + 1.3 * breath
-    K.gradient(14, HZ - 1, function(y) local u = (HZ - y) / 24; return glow * math.max(0, 1 - u) ^ 2.5 end)
+    F_glow = 0.72 + 0.55 * bloom + 1.3 * breath
+    K.gradient(14, HZ - 1, sky_glow)
     K.blit(clouds, 0.9 + 0.6 * bloom, K.drift_x * 0.05 + T * 0.25, true)
     put(2, 0, HZ, 128, 1)
     K.blit(mud, 1)
@@ -178,7 +179,7 @@ return function(K)
       for x = 0, 126, 2 do
         local y = chan(k, x) + K.heave(x * 1.5 + k * 20) * 0.35
         local sh = sin(x * 0.2 - T * 1.1 + K.drift_x * 0.1 + k)
-        local l = 1 + water * 1.6 + (sh > 0.7 and 1 or 0) + breath * 1.2
+        local l = 1 + water * 1.6 + (sh > 0.7 and 1 or 0) + breath * 1.2 + K.bj(x + k * 64)
         put(l, x, y, 2, w)
         local g = hi * 3.5 * math.max(0, sin(x * 1.3 + T * 7 + k))
         if g > 0.5 then put(l + g, x, y, 1, 1) end
@@ -188,9 +189,10 @@ return function(K)
     for i = #marks, 1, -1 do
       local mk = marks[i]
       local age = T - mk.t0
-      if age > 4 then table.remove(marks, i)
+      local cf, done = K.cap_fade(mk)
+      if age > 4 or done then table.remove(marks, i)
       else
-        local e = ease(age / 0.2) * (1 - ease((age - 1) / 3))
+        local e = (ease(age / 0.2) * (1 - ease((age - 1) / 3))) * cf
         if mk.slot == 2 then
           -- one bird flares up out of the flock near the pitch
           local x, y = mk.x + age * 5, 14 + (1 - mk.u) * 14 - sin(math.min(1, age / 1.5) * math.pi) * 6
@@ -242,7 +244,7 @@ return function(K)
       local e, u = inc.e, inc.u
       if inc.name == "heron" then
         -- a heron stalks slowly along a channel, stopping to look
-        local x = 10 + inc.s * 20 + u * 70 - (sin(inc.age * 0.7) > 0.5 and 0 or 0)
+        local x = 10 + inc.s * 20 + u * 70
         local y = chan(2, x) - 1
         local stride = sin(inc.age * 1.4)
         put(5 * e, x - 2, y - 7, 5, 3); put(4.5 * e, x - 4, y - 6, 2, 1)
@@ -253,16 +255,17 @@ return function(K)
         -- a curlew walks the mud, its long bill probing
         local x = 100 - u * 60
         local y = 50 + inc.s2 * 6
-        local probe = (inc.age % 2.5 > 1.8) and 2 or 0
-        put(5 * e, x - 1, y - 3, 4, 2); put(5 * e, x - 2, y - 4, 1, 1)
-        put(4.5 * e, x - 3, y - 3 + probe, 1, 1); put(4.5 * e, x - 4, y - 2 + probe, 1, 1); put(4 * e, x - 5, y - 1 + probe, 1, 1)
-        put(3.5 * e, x, y - 1, 1, 2); put(3.5 * e, x + 2, y - 1, 1, 2)
+        local probe = 2 * math.max(0, sin(inc.age * 2.5)) ^ 4
+        put(8 * e, x - 2, y - 4, 6, 3); put(8 * e, x - 3, y - 5, 2, 2)
+        put(7 * e, x - 4, y - 4 + probe, 1, 1); put(7 * e, x - 5, y - 3 + probe, 1, 1); put(6.5 * e, x - 6, y - 2 + probe, 1, 1)
+        put(6 * e, x, y - 1, 1, 2); put(6 * e, x + 2, y - 1, 1, 2)
+        put(2.5 * e, x - 3, y + 2, 8, 1)
       else
         -- a far flock passes high over, a loose line of specks
-        for k = 0, 9 do
-          local x = -10 + u * 150 - k * 4
+        for k = 0, 11 do
+          local x = -10 + u * 150 - k * 5
           local y = 5 + (k % 3) * 2 + sin(u * 5 + k) * 1.5
-          put((3 + (sin(K.NOW * 6 + k) > 0 and 1 or 0)) * e, x, y, 2, 1)
+          K.bird(x, y, (5.5 + 1.5 * sin(K.NOW * 6 + k)) * e, sin(K.NOW * 7 + k), 1)
         end
       end
     end

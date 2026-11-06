@@ -66,6 +66,8 @@ return function(K)
 
   function M.clear() bubbles, darts, glints = {}, {}, {} end
 
+  -- (no new bubbles while the water already holds as many as it can; the
+  -- ones there rise out on their own)
   local function add_bubble(x, y, r, v)
     if #bubbles < BUB_MAX then
       bubbles[#bubbles + 1] = {x = x, y = y, t0 = K.T, r = r, ph = K.rnd() * 6, v = v}
@@ -79,16 +81,15 @@ return function(K)
     elseif slot == 2 then
       add_bubble(x, FLOOR - 8, 3, 6)
     elseif slot == 3 then
-      darts[#darts + 1] = {x = x, y = 18 + (1 - K.pu(midi)) * 26, t0 = K.T, dir = K.rnd() < 0.5 and -1 or 1}
-      while #darts > DART_MAX do table.remove(darts, 1) end
+      -- (capped lists: the oldest fades out quickly when full)
+      K.cap_add(darts, {x = x, y = 18 + (1 - K.pu(midi)) * 26, t0 = K.T, dir = K.rnd() < 0.5 and -1 or 1}, DART_MAX)
     else
       local best, bd
       for k, f in ipairs(fronds) do
         local d = math.abs(f.x - x)
         if not bd or d < bd then best, bd = k, d end
       end
-      glints[#glints + 1] = {k = best, t0 = K.T}
-      while #glints > GLINT_MAX do table.remove(glints, 1) end
+      K.cap_add(glints, {k = best, t0 = K.T}, GLINT_MAX)
     end
   end
 
@@ -104,18 +105,22 @@ return function(K)
 
   local function sample(u, v) return u * 127, SURF + 1 + v * 3 end
 
+  -- the water's light from above, made once (its inputs set each frame)
+  local F_glow, F_bloom = 1, 0
+  local function water_glow(y) local u = (y - SURF) / (26 - 7 * F_bloom); return F_glow * math.max(0, 1 - u) ^ 2.8 end
+
   function M.draw()
     local T, DTS = K.T, K.DTS
     local bloom, breath, sw = K.bloom, K.breath, K.sw_disp
     local hi, mid, nat = A[K.HI], A[K.MID], A[K.NAT]
     -- the water: light from the surface fading with depth, breathing on the bar
-    local glow = 0.75 + 0.9 * bloom + 1.3 * breath
-    K.gradient(SURF + 1, FLOOR, function(y) local u = (y - SURF) / (26 - 7 * bloom); return glow * math.max(0, 1 - u) ^ 2.8 end, nil)
+    F_glow, F_bloom = 0.75 + 0.9 * bloom + 1.3 * breath, bloom
+    K.gradient(SURF + 1, FLOOR, water_glow, nil)
     K.blit(far, 1 + 0.5 * bloom, K.drift_x * 0.1, true)
     -- the surface seen from below: a bright wavering skin
     for x = 0, 126, 2 do
       local w = sin(x * 0.12 - T * 1.2 + K.drift_x * 0.05) + 0.6 * sin(x * 0.31 + T * 0.7)
-      put(2.5 + bloom + breath * 3 + (w > 0.6 and 1.5 or 0) + hi * 4 * math.max(0, sin(x * 1.3 + T * 5)), x, SURF + (w > 0 and 0 or 1) + K.heave(x) * 0.25, 2, 1)
+      put(2.5 + bloom + breath * 3 + K.bj(x) + (w > 0.6 and 1.5 or 0) + hi * 4 * math.max(0, sin(x * 1.3 + T * 5)), x, SURF + (w > 0 and 0 or 1) + K.heave(x) * 0.25, 2, 1)
     end
     -- the chord's shafts of light down from the surface, shimmering with
     -- out_hi
@@ -163,14 +168,16 @@ return function(K)
       local w = f.near and 2 or 1
       local base = K.at(floor_p, f.x)
       local gl = 0
+      local gcf = 1
       for _, g in ipairs(glints) do
-        if g.k == k then gl = math.max(gl, 1 - (T - g.t0) / 2.5) end
+        local v = 1 - (T - g.t0) / 2.5
+        if g.k == k and v > gl then gl, gcf = v, (K.cap_fade(g)) end
       end
       for s = 0, f.h, 2 do
         local x = spine(f, s)
         local y = base - s
         -- a glint running up the frond: a bright band climbing it
-        local run = gl > 0 and math.max(0, 1 - math.abs(s / f.h - (1 - gl)) * 5) * 5 or 0
+        local run = gl > 0 and math.max(0, 1 - math.abs(s / f.h - (1 - gl)) * 5) * 5 * gcf or 0
         put(lv + run, x, y - 2, w, 2)
         if s % 4 == 2 and s > 4 then
           -- a long blade streaming up and out, fluttering with the sound;
@@ -188,14 +195,18 @@ return function(K)
       local tx = spine(f, f.h)
       put(lv + 1, tx - 0.5, base - f.h - 3, 2, 2)
     end
-    for i = #glints, 1, -1 do if T - glints[i].t0 > 2.5 then table.remove(glints, i) end end
+    for i = #glints, 1, -1 do
+      local _, done = K.cap_fade(glints[i])
+      if T - glints[i].t0 > 2.5 or done then table.remove(glints, i) end
+    end
     -- small fish darting out from their pitch
     for i = #darts, 1, -1 do
       local d = darts[i]
       local age = T - d.t0
-      if age > 2.5 then table.remove(darts, i)
+      local cf, done = K.cap_fade(d)
+      if age > 2.5 or done then table.remove(darts, i)
       else
-        local e = ease(age / 0.15) * (1 - ease((age - 1.2) / 1.3))
+        local e = ease(age / 0.15) * (1 - ease((age - 1.2) / 1.3)) * cf
         local x = d.x + d.dir * (1 - math.exp(-age * 3)) * 22
         put(7 * e, x, d.y, 3, 1); put(4 * e, x - d.dir * 2, d.y, 1, 1)
         put(3 * e, x - d.dir * 4, d.y - 1, 1, 1); put(3 * e, x - d.dir * 4, d.y + 1, 1, 1)
@@ -246,26 +257,29 @@ return function(K)
         local dir = inc.s > 0.5 and 1 or -1
         local x = dir > 0 and (-20 + u * 170) or (150 - u * 170)
         local y = 16 + inc.s2 * 10 + sin(u * 6) * 3
-        put(3.5 * e, x - 6, y, 13, 2); put(3 * e, x + 7 * dir, y, 3, 1)
-        put(2.5 * e, x - 9 * dir, y - 1 + sin(K.T * 3), 3, 1); put(2.5 * e, x - 9 * dir, y + 2 - sin(K.T * 3), 3, 1)
+        local fl = sin(K.T * 3)
+        put(5 * e, x - 7, y, 15, 3); put(6 * e, x - 4, y, 9, 1); put(5 * e, x + 7 * dir - 1, y, 3, 2)
+        put(4 * e, x - 10 * dir - 1, y - 1 + fl, 3, 1); put(4 * e, x - 10 * dir - 1, y + 3 - fl, 3, 1)
       elseif inc.name == "jelly" then
         -- a jellyfish drifts up, its bell pulsing, its tendrils trailing
         local x = 20 + inc.s * 88 + sin(inc.age * 0.5) * 4
         local y = 50 - u * 40
         local pulse = 0.5 + 0.5 * sin(inc.age * 2.2)
-        local hw = 3 + pulse
-        put(5.5 * e, x - hw, y, hw * 2, 1); put(4.5 * e, x - hw + 1, y - 1, hw * 2 - 2, 1); put(3.5 * e, x - 1, y - 2, 2, 1)
+        local hw = 4 + pulse
+        put(7.5 * e, x - hw, y, hw * 2, 1); put(6.5 * e, x - hw + 1, y - 1, hw * 2 - 2, 1); put(5.5 * e, x - 2, y - 2, 4, 1)
+        put(3 * e, x - hw + 1, y - 3, hw * 2 - 2, 1)
         for k = -1, 1 do
-          for j = 1, 4 do put(2.5 * e * (1 - j / 5), x + k * 2 + sin(inc.age * 1.5 + j + k) * 0.8, y + 1 + j * 1.5, 1, 1) end
+          for j = 1, 5 do put(4 * e * (1 - j / 6), x + k * 2 + sin(inc.age * 1.5 + j + k) * 0.8, y + 1 + j * 1.5, 1, 2) end
         end
       else
         -- a crab walks sideways along the floor
         local x = 10 + inc.s * 30 + u * 70
         local y = K.at(floor_p, x) - 1
         local leg = sin(K.NOW * 12) > 0 and 1 or 0
-        put(5 * e, x - 2, y - 2, 5, 2)
-        put(4 * e, x - 4, y - leg, 2, 1); put(4 * e, x + 3, y - 1 + leg, 2, 1)
-        put(5 * e, x - 3, y - 4, 1, 2); put(5 * e, x + 3, y - 4, 1, 2)
+        put(7.5 * e, x - 3, y - 3, 7, 3)
+        put(6 * e, x - 5, y - leg, 2, 1); put(6 * e, x + 4, y - 1 + leg, 2, 1)
+        put(6 * e, x - 5, y - 2 + leg, 2, 1); put(6 * e, x + 4, y - 2 - leg + 1, 2, 1)
+        put(7 * e, x - 4, y - 6, 2, 2); put(7 * e, x + 3, y - 6, 2, 2)
       end
     end
     K.glitter(sample, 14)

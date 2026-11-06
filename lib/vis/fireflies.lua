@@ -22,7 +22,7 @@ return function(K)
   M.incidents = {{"bat", 10}, {"owl", 12}, {"boat", 24}}
 
   local WL = 45
-  local FLY_MAX = 16
+  local FLY_MAX = 18
   local AMBIENT = 12
   local PLOP_MAX = 6
   local flies, plops, plop_acc
@@ -78,8 +78,18 @@ return function(K)
   end
 
   local function plop(x, y, lv)
-    plops[#plops + 1] = {x = x, y = y, t0 = K.T, lv = lv}
-    while #plops > PLOP_MAX do table.remove(plops, 1) end
+    K.cap_add(plops, {x = x, y = y, t0 = K.T, lv = lv}, PLOP_MAX)
+  end
+
+  -- a new lit firefly; when as many as there can be are lit, the oldest one
+  -- fades out quickly (eased) rather than going out at once
+  local function lit_new(f)
+    local live, oldest = 0, nil
+    for _, a in ipairs(flies) do
+      if not a.amb and not a.gone then live = live + 1; oldest = oldest or a end
+    end
+    if live >= FLY_MAX - AMBIENT and oldest then oldest.gone = K.T end
+    flies[#flies + 1] = f
   end
 
   function M.note(slot, midi)
@@ -96,20 +106,29 @@ return function(K)
       if math.abs(a.x - x) < 6 and K.T - a.t0 > 2 then f = a; break end
     end
     if not f then
-      if #flies >= FLY_MAX then
-        for i, a in ipairs(flies) do if not a.amb then table.remove(flies, i); break end end
-      end
       f = {x = x, y = 18 + (1 - K.pu(midi)) * 20, ph = K.rnd() * 6, amb = false}
-      flies[#flies + 1] = f
+      lit_new(f)
     end
     f.t0, f.pk, f.kind = K.T, 11 + 2 * (1 - (slot - 1) / 4), slot
-    if slot == 2 and #flies < FLY_MAX then
+    if slot == 2 then
       -- a second answers it a little way off
-      flies[#flies + 1] = {x = x + 5, y = f.y - 3, ph = K.rnd() * 6, amb = false, t0 = K.T + 0.4, pk = f.pk, kind = 2}
+      lit_new({x = x + 5, y = f.y - 3, ph = K.rnd() * 6, amb = false, t0 = K.T + 0.4, pk = f.pk, kind = 2})
     end
   end
 
   local function sample(u, v) return u * 127, WL + 2 + v * 14 end
+
+  -- the sky and its reflection rows, made once (the light, the time and the
+  -- row are set each frame)
+  local F_glow, F_T, F_hi, F_lo, F_d = 1, 0, 0, 0, 1
+  local function sky(y) return F_glow * clamp(1 - (34 - y) / 18, 0, 1) ^ 1.6 end
+  local function keep_glow(x) return WL - F_d * 1.2 < K.at(sky_prof, x) end
+  local function glow_nudge(x)
+    local d, dl = F_d, 0
+    if F_hi > 0.02 then dl = F_hi * 3.5 * math.max(0, sin(x * 0.9 + d * 1.7 + F_T * 5)) end
+    if F_lo > 0.02 then dl = dl + F_lo * 1.6 * sin(x * 0.04 - F_T * 0.6 + d * 0.3) end
+    return K.heave(x + d * 3) * (0.3 + d * 0.06), dl
+  end
 
   -- how lit a note's firefly is, by the kind of light its motif makes
   local function lit_of(f, age)
@@ -130,8 +149,7 @@ return function(K)
     local bloom, breath, sw = K.bloom, K.breath, K.sw_disp
     local hi, mid, nat = A[K.HI], A[K.MID], A[K.NAT]
     -- the sky: the last light low over the trees, stars higher up
-    local glow = 1.6 + 1.2 * bloom + 1.0 * breath + 0.8 * K.chord_glow
-    local function sky(y) return glow * clamp(1 - (34 - y) / 18, 0, 1) ^ 1.6 end
+    F_glow, F_T, F_hi, F_lo = 1.6 + 1.2 * bloom + 1.0 * breath + 0.8 * K.chord_glow, T, hi, A[K.LO]
     K.gradient(10, WL - 1, sky, sky_prof)
     for i, s in ipairs(STARS) do
       put((1.5 - bloom * 0.6) * (1.1 + 0.6 * sin(T * 0.5 + i * 2.3)) + hi * 2 * math.max(0, sin(T * 3 + i * 1.9)), s[1], s[2], 1, 1)
@@ -164,16 +182,9 @@ return function(K)
     -- the water: the glow lies in it below the trees' reflection
     for d = 1, 18 do
       if d % 2 == 0 or d < 3 then
-        local keep = function(x) return WL - d * 1.2 < K.at(sky_prof, x) end
+        F_d = d
         local l = sky(WL - d * 1.2) * 0.7 + breath * 1.2
-        local lo = A[K.LO]
-        K.streaks(l, WL + d, 6 + d % 4, 9 + d % 3, K.drift_x * (0.3 + d * 0.03) + d * 4.7, keep,
-          function(x)
-            local dl = 0
-            if hi > 0.02 then dl = hi * 3.5 * math.max(0, sin(x * 0.9 + d * 1.7 + T * 5)) end
-            if lo > 0.02 then dl = dl + lo * 1.6 * sin(x * 0.04 - T * 0.6 + d * 0.3) end
-            return K.heave(x + d * 3) * (0.3 + d * 0.06), dl
-          end)
+        K.streaks(l, WL + d, 6 + d % 4, 9 + d % 3, K.drift_x * (0.3 + d * 0.03) + d * 4.7, keep_glow, glow_nudge)
       end
     end
     -- a swell lifts an evening mist off the water
@@ -190,9 +201,10 @@ return function(K)
     for i = #plops, 1, -1 do
       local p = plops[i]
       local age = T - p.t0
-      if age > 2.5 then table.remove(plops, i)
+      local cf, done = K.cap_fade(p)
+      if age > 2.5 or done then table.remove(plops, i)
       else
-        local e = ease(age / 0.12) * (1 - age / 2.5)
+        local e = ease(age / 0.12) * (1 - age / 2.5) * cf
         K.ring(p.x, p.y, 1 + age * 5, 0.35, p.lv * e, 11, 0, WL, 64)
         if age < 0.3 then put(p.lv * 1.2, p.x, p.y - 2 - age * 6, 1, 1) end
       end
@@ -236,8 +248,9 @@ return function(K)
       local awake = f.amb and clamp(3 + 11 * A[K.AMP] - f.n, 0, 1) or 0
       local base = f.amb and (1.5 + 1.2 * (0.5 + 0.5 * sin(T * 0.8 + f.ph)) + 2.5 * breath) * awake * (0.7 + 0.9 * A[K.AMP]) or 0
       local tw = hi * 2.5 * math.max(0, sin(T * 4 + f.ph * 5))
-      local lv = math.max(base, lit) + ((lit > 0.5 or f.amb) and tw or 0)
-      if not f.amb and age >= 6 then
+      local cf, done = K.cap_fade(f)
+      local lv = (math.max(base, lit) + ((lit > 0.5 or f.amb) and tw or 0)) * cf
+      if not f.amb and (age >= 6 or done) then
         table.remove(flies, i)
       elseif lv >= 0.5 then
         -- a soft glow round it, then the light itself
@@ -280,23 +293,23 @@ return function(K)
         local x = -6 + u * 140
         local y = 12 + sin(u * 23) * 5 + sin(u * 7) * 4
         local flap = sin(K.NOW * 14)
-        K.bird(x, y, 5 * e, flap, 2)
-        put(4 * e, x - 1, y + 1, 3, 1)
+        K.bird(x, y, 6 * e, flap, 2)
+        put(5 * e, x - 1, y + 1, 3, 1)
       elseif inc.name == "owl" then
         -- an owl glides along the tree line, pale underneath
         local dir = inc.s > 0.5 and 1 or -1
         local x = dir > 0 and (-12 + u * 152) or (140 - u * 152)
         local y = K.at(sky_prof, clamp(x, 0, 127)) - 5 + sin(u * 5) * 2
-        K.bird(x, y, 5 * e, sin(K.NOW * 1.6) * 0.6, 2)
-        put(4 * e, x - 1, y + 1, 3, 1)
+        K.bird(x, y, 6.5 * e, sin(K.NOW * 1.6) * 0.6, 2)
+        put(6 * e, x - 2, y + 1, 5, 1); put(4 * e, x - 1, y + 2, 3, 1)
       else
         -- a little boat drifts along the water, a lantern at its bow, its
         -- light lying long in the water
         local dir = inc.s > 0.5 and 1 or -1
         local x = dir > 0 and (-10 + u * 148) or (138 - u * 148)
         local y = WL + 4
-        put(3.5 * e, x - 5, y, 11, 1); put(2.5 * e, x - 4, y + 1, 9, 1)
-        put(2 * e, x - 1, y - 3, 1, 3)
+        put(4.5 * e, x - 5, y, 11, 1); put(3.5 * e, x - 4, y + 1, 9, 1)
+        put(3 * e, x - 1, y - 3, 1, 3)
         local fl = 0.8 + 0.2 * sin(K.NOW * 5)
         put(9 * e * fl, x + 4 * dir, y - 3, 1, 1)
         put(3.5 * e * fl, x + 3 * dir, y - 3, 3, 1); put(3.5 * e * fl, x + 4 * dir, y - 4, 1, 3)

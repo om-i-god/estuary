@@ -72,7 +72,7 @@ return function(K)
     for y = 8, 56, 3 do
       for x = (y * 7) % 5, 127, 5 do
         local h = K.hash(x * 64 + y, 56)
-        if h < 0.22 then rec(1, x + floor(h * 9), y + (h < 0.1 and 1 or 0), 1 + (h < 0.05 and 1 or 0), 1) end
+        if h < 0.11 then rec(1, x + floor(h * 18), y + (h < 0.1 and 1 or 0), 1 + (h < 0.05 and 1 or 0), 1) end
       end
     end
     for dy = -2, 2 do rec(1, 96 - (3 - math.abs(dy)) * 2, 44 + dy, (3 - math.abs(dy)) * 4 + 2, 1) end
@@ -95,17 +95,15 @@ return function(K)
     flick[slot] = 1
     local p = fish_xy[slot]
     -- the ring lands at the note's pitch, level with its fish
-    rings[#rings + 1] = {x = K.px(midi), y = p and p[2] or (14 + slot * 8), t0 = K.T, kind = slot}
-    while #rings > RING_MAX do table.remove(rings, 1) end
+    -- (when the pond holds as many rings as it can, the oldest fades quickly)
+    K.cap_add(rings, {x = K.px(midi), y = p and p[2] or (14 + slot * 8), t0 = K.T, kind = slot}, RING_MAX)
   end
 
   local function sample(u, v) return 4 + u * 120, 7 + v * 50 end
 
   -- a lily pad from above: a disc with a notch toward its stem, a lit rim
-  local function pad(p, l, rim)
-    local r = p.r
+  local function pad(x, y, r, l, rim)
     if r < 1 then return end
-    local x, y = p.x, p.y
     local rows = floor(r * 0.8)
     for dy = -rows, rows do
       local hw = math.sqrt(math.max(0, r * r - (dy / 0.8) ^ 2))
@@ -129,7 +127,7 @@ return function(K)
     K.blit(stone_edge, (1 + 0.3 * bloom + 0.7 * breath) * (1 - 0.4 * clamp((sw - 0.3) / 0.7, 0, 1)))
     -- the water: sky light moving faintly on it, breathing on the bar; out_lo
     -- rolls broad slow bands of light across
-    K.surface(0, 6, 128, 58, 1 + breath * 2.6 + 0.3 * bloom + nat * 1.2, 11 - floor(nat * 3), 5, 3)
+    K.surface(0, 6, 128, 58, 1 + breath * 2.6 + 0.3 * bloom + nat * 1.2, 15 - floor(nat * 4), 6, 3)
     K.twinkle(GLINTS, hi, 8.5)
     if lo > 0.05 then
       for b = 0, 1 do
@@ -171,20 +169,21 @@ return function(K)
       p.x = p.x + u * DTS * 0.3
       p.y = clamp(p.y + v * DTS * 0.3, 12, 50)
       local rock = lo * 1.5 * sin(T * 0.9 + p.ph)
-      local q = {x = p.x + rock, y = p.y + lo * sin(T * 0.7 + p.ph), r = p.r}
-      pad(q, 2 + 0.8 * bloom + 1.2 * K.chord_glow, 1)
-      put(2 + 7 * hi * math.max(0, sin(T * 5 + i * 2)), q.x - p.r * 0.7, q.y - p.r * 0.6, 3, 1)   -- light on its rim
+      local qx, qy = p.x + rock, p.y + lo * sin(T * 0.7 + p.ph)
+      pad(qx, qy, p.r, 2 + 0.8 * bloom + 1.2 * K.chord_glow, 1)
+      put(2 + 7 * hi * math.max(0, sin(T * 5 + i * 2)), qx - p.r * 0.7, qy - p.r * 0.6, 3, 1)   -- light on its rim
       local fl = ease((bloom - 0.3) / 0.25)                      -- a flower as the bloom opens
-      if i == 1 and p.r > 3 and fl > 0.02 then put((4 + 3 * bloom) * fl, q.x - 1, q.y - 1, 2, 2) end
+      if i == 1 and p.r > 3 and fl > 0.02 then put((4 + 3 * bloom) * fl, qx - 1, qy - 1, 2, 2) end
     end
     -- rings where the notes landed, each fish its own way
     for i = #rings, 1, -1 do
       local r = rings[i]
       local age = T - r.t0
-      if age > 3.2 then table.remove(rings, i)
+      local cf, done = K.cap_fade(r)
+      if age > 3.2 or done then table.remove(rings, i)
       else
         local rad = 1.5 + age * 5.5
-        local lv = 8.5 * (1 - age / 3.2) * ease(age / 0.15) * (0.6 + 0.6 * A[K.AMP])
+        local lv = 8.5 * (1 - age / 3.2) * ease(age / 0.15) * (0.6 + 0.6 * A[K.AMP]) * cf
         local n = math.max(8, floor(rad * 1.8))
         K.ring(r.x, r.y, rad, 0.9, lv, n)
         if r.kind == 2 then K.ring(r.x, r.y, rad * 0.55, 0.9, lv * 0.8, math.max(6, n // 2)) end
@@ -288,41 +287,48 @@ return function(K)
         local hop = clamp((inc.age - inc.dur * 0.55) / 0.8, 0, 1)
         local fx = p.x + hop * 12
         local fy = p.y - 1 - sin(math.pi * hop) * 5
-        if hop < 1 then
+        -- (it slips under as it lands: the frog fades over the end of the hop
+        -- while the rings ease up)
+        local fe = e * (1 - ease((hop - 0.6) / 0.4))
+        if fe > 0.01 then
           -- it breathes, its throat pulsing
-          local thr = sin(K.T * 3) > 0 and 1 or 0
-          put(6.5 * e, fx - 2, fy - 2, 5, 3); put(5.5 * e, fx - 3, fy, 1, 2); put(5.5 * e, fx + 3, fy, 1, 2)
-          put(8 * e, fx - 1, fy - 3, 1, 1); put(8 * e, fx + 1, fy - 3, 1, 1)
-          put((4 + thr * 2) * e, fx - 1, fy + 1, 3, 1)
-        else
-          local age = inc.age - inc.dur * 0.55 - 0.8
-          K.ring(p.x + 12, p.y - 1, 1.5 + age * 6, 0.9, 6 * e * math.max(0, 1 - age / 3), 20)
-          K.ring(p.x + 12, p.y - 1, 1 + age * 3.5, 0.9, 4 * e * math.max(0, 1 - age / 3), 12)
+          local thr = 0.5 + 0.5 * sin(K.T * 3)
+          put(8 * fe, fx - 3, fy - 2, 7, 3); put(7 * fe, fx - 4, fy, 1, 2); put(7 * fe, fx + 4, fy, 1, 2)
+          put(9 * fe, fx - 1, fy - 3, 1, 1); put(9 * fe, fx + 1, fy - 3, 1, 1)
+          put((4.5 + thr * 2) * fe, fx - 1, fy + 1, 3, 1)
+        end
+        local age = inc.age - inc.dur * 0.55 - 0.6
+        if age > 0 then
+          local re = e * ease(age / 0.4) * math.max(0, 1 - age / 3.5)
+          K.ring(p.x + 12, p.y - 1, 1.5 + age * 6, 0.9, 7 * re, 20)
+          K.ring(p.x + 12, p.y - 1, 1 + age * 3.5, 0.9, 5 * re, 12)
         end
       elseif inc.name == "leaf" then
         -- a maple leaf drifts across on the current, turning
         local x = -8 + u * 144
         local y = 24 + sin(u * 3 + inc.s * 6) * 12
         local a = u * 4
+        put(5 * e, x - 1, y - 1, 3, 3)
         for k = 0, 4 do
           local aa = a + k * K.TAU / 5
-          put(6 * e, x + cos(aa) * 2.5, y + sin(aa) * 2.5, 2, 1)
+          put(7.5 * e, x + cos(aa) * 3, y + sin(aa) * 3, 2, 2)
         end
-        put(7 * e, x, y, 1, 1)
+        put(9 * e, x, y, 1, 1)
+        put(2 * e, x - 2, y + 5, 6, 1)                      -- its shadow
       else
         -- a dragonfly darts across in hops and hovers over a pad
         local hops = floor(inc.age / 2)
         local f = ease(clamp((inc.age % 2) / 0.4, 0, 1))
         local x = 10 + inc.s * 20 + (hops + f) * 14
         local y = 16 + sin(hops * 2.1 + inc.s2 * 6) * 10
-        put(7.5 * e, x - 3, y, 7, 1)
+        put(9 * e, x - 4, y, 9, 1)
         local wing = sin(K.NOW * 30) > 0 and 1 or 0
-        put(5 * e, x - 2, y - 1 - wing, 2, 1); put(5 * e, x + 1, y - 1 - wing, 2, 1)
-        put(5 * e, x - 2, y + 1 + wing, 2, 1); put(5 * e, x + 1, y + 1 + wing, 2, 1)
-        put(2 * e, x - 2, y + 6, 5, 1)                      -- its shadow on the water
+        put(6.5 * e, x - 3, y - 1 - wing, 3, 1); put(6.5 * e, x + 1, y - 1 - wing, 3, 1)
+        put(6.5 * e, x - 3, y + 1 + wing, 3, 1); put(6.5 * e, x + 1, y + 1 + wing, 3, 1)
+        put(2.5 * e, x - 3, y + 6, 7, 1)                    -- its shadow on the water
       end
     end
-    K.glitter(sample, 18)
+    K.glitter(sample, 12)
   end
 
   M.init()

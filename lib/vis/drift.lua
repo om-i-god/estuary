@@ -22,7 +22,7 @@ return function(K)
   M.incidents = {{"strider", 14}, {"leaf", 22}, {"fish", 12}}
 
   local ORBIT_RY = {6, 12, 18, 24}
-  local PETALS = 14
+  local PETALS = 10
   local MARK_MAX = 10
   local petals, marks
 
@@ -76,6 +76,13 @@ return function(K)
 
   local function sample(u, v) return orbit_pt(floor(u * 4) + 1, v * K.TAU) end
 
+  -- the sheens' keep and glint, made once (their row and the time are set
+  -- each frame); the leaves' places this frame, reused
+  local F_T, F_hi, F_y = 0, 0, 0
+  local function sheen_keep(x) return sin(x * 0.05 + F_y * 0.13 - F_T * 0.1) > -0.3 end
+  local function sheen_glint(x) return 0, F_hi * 3 * math.max(0, sin(x * 0.9 + F_y * 1.7 + F_T * 6)) end
+  local PX, PY, PH = {}, {}, {}
+
   -- a note lands on its motif's eddy, across by its pitch: the eddy's near
   -- side for a low note, its far side for a high one
   function M.note(slot, midi)
@@ -83,11 +90,8 @@ return function(K)
     local rx = ORBIT_RY[slot] * 1.7
     local c = clamp((x - 64) / rx, -1, 1)
     local a = math.acos(c) * (K.pu(midi) > 0.5 and -1 or 1)
-    marks[#marks + 1] = {slot = slot, a = a, t0 = K.T}
-    if #marks > MARK_MAX then
-      -- (the oldest goes once it has nearly faded; till then a new note waits)
-      if K.T - marks[1].t0 > 3.5 then table.remove(marks, 1) else marks[#marks] = nil end
-    end
+    -- (when the list is full, the oldest mark fades out quickly)
+    K.cap_add(marks, {slot = slot, a = a, t0 = K.T}, MARK_MAX)
   end
 
   -- a leaf lying along its heading: a bright midrib and a dimmer blade
@@ -133,7 +137,7 @@ return function(K)
     local cut = sw * 8
     for y = 0, 63, 1 do
       local a, b = e1(y) - cut, e2(y) - cut
-      local lap = 1 + 0.8 * sin(T * 0.9 + y * 0.5) + breath
+      local lap = 1 + 0.8 * sin(T * 0.9 + y * 0.5) + breath + K.bj(y)
       if a > 1 then put(2 + bloom, a - 2, y, 2, 1); put(lap, a + 1, y, 1, 1) end
       if b > 1 then put(2 + bloom, 128 - b, y, 2, 1); put(lap, 128 - b - 2, y, 1, 1) end
     end
@@ -147,14 +151,15 @@ return function(K)
     end
     -- the sky lying on the pool: long faint sheens that slide with the
     -- current, broken where the eddies turn the surface
+    F_T, F_hi = T, hi
     for y = 6, 58, 4 do
+      F_y = y
       K.streaks(1 + 0.6 * bloom + breath * 1.5, y, 7 + (y * 3) % 5, 17 + (y * 7) % 6, K.drift_x * (0.5 + y * 0.01) + y * 9.7 + sin(T * 0.2 + y) * 3,
-        function(x) return sin(x * 0.05 + y * 0.13 - T * 0.1) > -0.3 end,
-        function(x) return 0, hi * 3 * math.max(0, sin(x * 0.9 + y * 1.7 + T * 6)) end)
+        sheen_keep, sheen_glint)
     end
     -- the surface: a faint light texture moving with the current, ruffled
     -- by the wind the water sounds bring
-    K.surface(0, 1, 128, 64, 1 + nat * 1.3, 10 - floor(nat * 3), 5 - floor(nat * 1.5), 3)
+    K.surface(0, 1, 128, 64, 1 + nat * 1.3, 15 - floor(nat * 5), 7 - floor(nat * 2), 3)
     -- the eddies' paths: arcs of light that run round with the water,
     -- fuller and brighter with out_mid, breathing on the bar
     for i = 1, 4 do
@@ -164,7 +169,7 @@ return function(K)
         local sh = sin(a * 3 - T * (0.5 + 0.1 * i) * (i % 2 == 0 and 1 or -1) + i)
         if sh > 0.3 - 0.55 * mid then
           local x, y = orbit_pt(i, a)
-          put(1 + (sh > 0.8 and 1 or 0) + mid * 1.2 + breath * 1.3 + hi * 3.5 * math.max(0, sin(k * 2.3 + T * 7 + i)), x, y, 2, 1)
+          put(1 + (sh > 0.8 and 1 or 0) + mid * 1.2 + breath * 1.3 + K.bj(k + i * 64) + hi * 3.5 * math.max(0, sin(k * 2.3 + T * 7 + i)), x, y, 2, 1)
         end
       end
     end
@@ -184,7 +189,7 @@ return function(K)
       end
     end
     -- the leaves
-    local pts, ph, np = {}, {}, 0
+    local np = 0
     for i = 1, 4 do
       local p = K.phase(S, i)
       if p then
@@ -205,7 +210,7 @@ return function(K)
           end
           leaf(x, y, nx - x, ny - y, lv)
           np = np + 1
-          pts[np], ph[np] = {x, y}, p
+          PX[np], PY[np], PH[np] = x, y, p
         else
           leaf(x, y, nx - x, ny - y, 2.5)
         end
@@ -215,9 +220,10 @@ return function(K)
     for i = #marks, 1, -1 do
       local mk = marks[i]
       local age = T - mk.t0
-      if age > 4 then table.remove(marks, i)
+      local cf, done = K.cap_fade(mk)
+      if age > 4 or done then table.remove(marks, i)
       else
-        local e = 1.3 * ease(age / 0.2) * (1 - ease((age - 0.8) / 3.2))
+        local e = (1.3 * ease(age / 0.2) * (1 - ease((age - 0.8) / 3.2))) * cf
         local x, y = orbit_pt(mk.slot, mk.a + age * 0.06 * (mk.slot % 2 == 0 and 1 or -1))
         if mk.slot == 1 then
           K.ring(x, y, 1.5 + age * 4, 0.7, 5 * e, 14)
@@ -255,10 +261,10 @@ return function(K)
     -- a shimmering dotted line joins two leaves whose phases line up
     for i = 1, np - 1 do
       for j = i + 1, np do
-        local d = math.abs(ph[i] - ph[j])
+        local d = math.abs(PH[i] - PH[j])
         d = math.min(d, 1 - d)
         if d < 0.12 then
-          local x0, y0, x1, y1 = pts[i][1], pts[i][2], pts[j][1], pts[j][2]
+          local x0, y0, x1, y1 = PX[i], PY[i], PX[j], PY[j]
           local n = math.max(2, floor(math.max(math.abs(x1 - x0), math.abs(y1 - y0)) / 2))
           local base = (1 - d / 0.12) * 5 * (0.8 + 0.5 * hi)
           for s = 1, n - 1 do
@@ -291,9 +297,10 @@ return function(K)
         local x = -10 + u * 150
         local y = 30 + sin(u * 4 + inc.s * 6) * 10
         local a = u * 5 + inc.s * 6
-        leaf(x, y, cos(a), sin(a), 8 * e, 3)
-        leaf(x + 2, y + 2, cos(a), sin(a), 5 * e, 2)
-        put(1.5 * e, x - 3, y + 4, 8, 2)                    -- its shadow on the bed
+        put(4 * e, x - 3, y - 1, 7, 3)                      -- the blade
+        leaf(x, y, cos(a), sin(a), 9 * e, 3)
+        leaf(x + 2, y + 2, cos(a), sin(a), 6 * e, 2)
+        put(2 * e, x - 4, y + 4, 9, 2)                      -- its shadow on the bed
       else
         -- a fish's shadow passes under: a dim long shape, its back a little
         -- lighter, the tail sweeping
@@ -301,10 +308,10 @@ return function(K)
         local x = dir > 0 and (-16 + u * 160) or (144 - u * 160)
         local y = 26 + inc.s2 * 14 + sin(u * 7) * 3
         local tail = sin(K.T * 4) * 1.5
-        put(1.8 * e, x - 5 * dir, y - 1, 11, 3)
-        put(2.6 * e, x - 3 * dir, y, 7, 1)
-        put(1.5 * e, x - 9 * dir, y - 1 + tail, 3, 2)
-        put(1.5 * e, x + 2 * dir, y - 2, 3, 1); put(1.5 * e, x + 2 * dir, y + 2, 3, 1)
+        put(2.6 * e, x - 7, y - 2, 15, 4)
+        put(3.8 * e, x - 5, y - 1, 10, 2)
+        put(2.4 * e, x - 10 * dir - 1, y - 2 + tail, 3, 3)
+        put(2.4 * e, x + 2 * dir - 1, y - 3, 3, 1); put(2.4 * e, x + 2 * dir - 1, y + 2, 3, 1)
       end
     end
     K.glitter(sample)

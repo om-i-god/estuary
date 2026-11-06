@@ -66,13 +66,16 @@ return function(K)
 
   local function sample(u, v) return u * 127, hz_line + 3 + v * (60 - hz_line) end
 
+  -- the sky's light and the headland's reflection, made once (inputs set
+  -- each frame)
+  local F_yw, F_reach, F_glow, F_d = 40, 20, 1, 2
+  local function sky(y) local u = (F_yw - y) / F_reach; return u < 1 and F_glow * (1 - u) ^ 2.2 or 0 end
+  local function keep_head(x) return x < 56 and F_yw - F_d < K.at(head, x) end
+
   -- a note catches the light at its pitch; the motif decides what lights
   function M.note(slot, midi)
-    marks[#marks + 1] = {slot = slot, x = K.px(midi), u = K.pu(midi), t0 = K.T}
-    if #marks > MARK_MAX then
-      -- (the oldest goes once it has nearly faded; till then a new note waits)
-      if K.T - marks[1].t0 > 3.5 then table.remove(marks, 1) else marks[#marks] = nil end
-    end
+    -- (when the list is full, the oldest mark fades out quickly)
+    K.cap_add(marks, {slot = slot, x = K.px(midi), u = K.pu(midi), t0 = K.T}, MARK_MAX)
   end
 
   function M.draw(S)
@@ -100,7 +103,7 @@ return function(K)
     local glow = (1.5 + 1.2 * bloom) * (1 - 0.25 * shade)
     local top = floor(yw) - 1
     local reach = 18 + 3 * bloom
-    local function sky(y) local u = (yw - y) / reach; return u < 1 and glow * (1 - u) ^ 2.2 or 0 end
+    F_yw, F_reach, F_glow = yw, reach, glow
     for y = 0, top do K.dither_row(sky(y) + breath * 1.8 * clamp(1 - (yw - y) / 14, 0, 1), y, head) end
     K.blit(clouds, 0.8 + 0.6 * bloom, K.drift_x * 0.05 + T * 0.35, true)
     for y = top - 8 - lift, top do
@@ -147,8 +150,8 @@ return function(K)
     -- the headland's foot in the water: its dark reflection, edged by glow
     for d = 2, 7, 2 do
       local y = yw + d
-      K.streaks(glow * 0.7, y, 7, 9, K.drift_x * 0.4 + d * 3,
-        function(x) return x < 56 and yw - d < K.at(head, x) end)
+      F_d = d
+      K.streaks(glow * 0.7, y, 7, 9, K.drift_x * 0.4 + d * 3, keep_head)
     end
     -- the swell behind the line: only its crests show, more and brighter
     -- with out_mid
@@ -160,7 +163,7 @@ return function(K)
     for x = 0, 126, 2 do
       local w = wave(x)
       local sparkle = hi * 2.5 * math.max(0, sin(x * 1.1 - T * 6))
-      put(3 + clamp(-w * 0.6, -1, 1.5) + K.bar_pulse + breath * 2.2 + sparkle, x, yw + w, 2, 1)
+      put(3 + clamp(-w * 0.6, -1, 1.5) + breath * 2.6 + K.bj(x) + sparkle, x, yw + w, 2, 1)
     end
     -- chord voices: soft bands of light under the line, one per tone, across
     -- by its pitch, lower notes deeper, refracted by the same wave; a new
@@ -178,7 +181,7 @@ return function(K)
           local v = math.exp(-d * d)
           if v > 0.3 then
             local sh = 0.75 + 0.25 * sin(T * 0.8 + x * 0.1 + i * 2)
-            put(((base + 1) * v * sh + K.bar_pulse * v) * p, x, y + wave(x + i * 9) * 0.6, 2, 1)
+            put(((base + 1) * v * sh + breath * v) * p + K.bj(x + i * 64), x, y + wave(x + i * 9) * 0.6, 2, 1)
           end
         end
       end
@@ -215,9 +218,10 @@ return function(K)
     for i = #marks, 1, -1 do
       local mk = marks[i]
       local age = T - mk.t0
-      if age > 4.5 then table.remove(marks, i)
+      local cf, done = K.cap_fade(mk)
+      if age > 4.5 or done then table.remove(marks, i)
       else
-        local e = 1.15 * ease(age / 0.25) * (1 - ease((age - 1.2) / 3.3))
+        local e = (1.15 * ease(age / 0.25) * (1 - ease((age - 1.2) / 3.3))) * cf
         local x = mk.x
         if mk.slot == 1 then
           -- a crest close in catches the light and breaks along, foam behind
@@ -256,10 +260,10 @@ return function(K)
         local x = dir > 0 and (58 + u * 78) or (134 - u * 78)
         local y = floor(yw) - 1
         -- a mainsail and a jib, a hull, and their light in the water
-        for k = 0, 4 do put((5.5 - k * 0.5) * e, x + k * dir, y - 9 + k * 2, 1, 9 - k * 2) end
-        for k = 1, 3 do put(4 * e, x - k * dir, y - 6 + k * 2, 1, 6 - k * 2) end
-        put(3.5 * e, x - 4, y, 9, 1)
-        for d = 2, 8, 2 do put(2.5 * e * (1 - d / 10), x - 2 + K.heave(x + d) * 0.4, y + d, 5, 1) end
+        for k = 0, 4 do put((6.5 - k * 0.5) * e, x + k * dir, y - 10 + k * 2, 1, 10 - k * 2) end
+        for k = 1, 3 do put(5 * e, x - k * dir, y - 7 + k * 2, 1, 7 - k * 2) end
+        put(4.5 * e, x - 5, y, 11, 1)
+        for d = 2, 8, 2 do put(3 * e * (1 - d / 10), x - 3 + K.heave(x + d) * 0.4, y + d, 7, 1) end
       elseif inc.name == "cloud" then
         -- a soft grey cloud drifting past the sun, lit along its top
         local cy = floor(yw) - 11
@@ -270,19 +274,22 @@ return function(K)
       else
         -- a porpoise rolls: a dark curved back out of the water and in,
         -- twice, a little apart
-        for j = 0, 2 do
-          local a = clamp((inc.age - 1.5 - j * 2.6) / 1.8, 0, 1)
-          local px = 16 + inc.s * 60 + j * 14 + a * 8
+        -- (a pod of them, one after another)
+        for j = 0, 3 do
+          local a = clamp((inc.age - 1.2 - j * 2) / 2, 0, 1)
+          local px = 12 + inc.s * 50 + j * 13 + a * 9
           local py = yw + 9 + inc.s2 * 6 + j
           if a > 0 and a < 1 then
-            local h = 4 * sin(math.pi * a)
+            -- (it eases up out of the water and back under)
+            local pe = e * ease(a / 0.25) * ease((1 - a) / 0.25)
+            local h = 5 * sin(math.pi * a)
             -- the back, curving over, and the fin
-            put(5 * e, px - 5, py - h + 1, 4, 1); put(5.5 * e, px - 2, py - h, 5, 1); put(5 * e, px + 3, py - h + 1, 3, 1)
-            put(4 * e, px, py - h - 1, 2, 1); put(4.5 * e, px + 1, py - h - 2, 1, 1)
-            put(3.5 * e, px - 6, py + 1, 14, 1)
+            put(6.5 * pe, px - 5, py - h + 1, 4, 1); put(7 * pe, px - 2, py - h, 5, 1); put(6.5 * pe, px + 3, py - h + 1, 3, 1)
+            put(5.5 * pe, px, py - h - 1, 2, 1); put(6 * pe, px + 1, py - h - 2, 1, 1)
+            put(4.5 * pe, px - 6, py + 1, 14, 1)
           end
-          local ra = inc.age - 1.5 - j * 2.6 - 1.8
-          if ra > 0 and ra < 3 then K.ring(px + 2, py + 1, 2 + ra * 5, 0.3, 4 * e * (1 - ra / 3), 16, 0, yw + 1, 64) end
+          local ra = inc.age - 1.2 - j * 2 - 2
+          if ra > 0 and ra < 3 then K.ring(px + 2, py + 1, 2 + ra * 5, 0.3, 5 * e * (1 - ra / 3) * ease(ra / 0.3), 16, 0, yw + 1, 64) end
         end
       end
     end
