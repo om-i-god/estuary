@@ -430,7 +430,7 @@ local function streaks(l, y, w, gap, off, keep, nudge, x0, x1)
     if ww >= 1 and mx >= x0 and mx < x1 and (not keep or keep(mx)) then
       local dx, dl = 0, 0
       if nudge then dx, dl = nudge(mx, y) end
-      put(l + dl, xx + dx, y, ww, 1)
+      put(l + dl + h * 0.8 - 0.4, xx + dx, y, ww, 1)
     end
   end
 end
@@ -463,10 +463,17 @@ local function surface(x0, y0, x1, y1, lvl, gap, dy, wlen)
   wlen = wlen or 2
   for y = y0, y1 - 1, dy do
     local par = 0.6 + 0.8 * (y / 64)
-    local off = (drift_x * par + row * gap * 0.5) % gap
+    local o = drift_x * par + row * gap * 0.5
+    local off = o % gap
+    -- each dash rounds its level a little differently (fixed to the dash as
+    -- it slides), so a slowly brightening surface brightens a few dashes at
+    -- a time instead of all at once
+    local k = -math.floor(o / gap) + row * 31
+    if k ~= k or k > 1e9 or k < -1e9 then k = 0 end
     for x = x0 + off, x1 - 1, gap do
-      local w = math.sin(x * 0.11 + y * 0.6 - T * 0.8) + 0.7 * math.sin(x * 0.043 - y * 0.27 + T * 0.37)
-      if w > 0.35 then put(lvl * (w > 1.2 and 2 or 1), x, y + heave(x) * 0.5, wlen, 1) end
+      local w = sin(x * 0.11 + y * 0.6 - T * 0.8) + 0.7 * sin(x * 0.043 - y * 0.27 + T * 0.37)
+      if w > 0.35 then put(lvl * (w > 1.2 and 2 or 1) + (((k * 2654435761) >> 9) & 7) / 8 - 0.44, x, y + heave(x) * 0.5, wlen, 1) end
+      k = k + 1
     end
     row = row + 1
   end
@@ -680,6 +687,28 @@ function K.bird(x, y, lv, flap, size)
     put(lv * 0.8, x - 1, y + w, 1, 1); put(lv * 0.8, x + 1, y + w, 1, 1)
     put(lv * 0.6, x - 2, y + w, 1, 1); put(lv * 0.6, x + 2, y + w, 1, 1)
   end
+end
+
+-- fine glints at fixed points (pts: flat {x, y, ...}), each twinkling on
+-- its own slow phase, as bright as amt (0..1) allows: out_hi's shimmer
+function K.twinkle(pts, amt, lv)
+  if not (amt > 0.02) then return end
+  lv = (lv or 5) * amt
+  local t = T * 2.3
+  for i = 1, #pts, 2 do
+    local w = sin(t + i * 1.37) * sin(t * 0.61 + i * 0.71)
+    if w > 0.2 then put(lv * w, pts[i], pts[i + 1], 2, 1) end
+  end
+end
+
+-- a fixed scatter of n points in a box, for K.twinkle
+function K.scatter(n, x0, y0, x1, y1, salt)
+  local p = {}
+  for k = 1, n do
+    p[#p + 1] = math.floor(x0 + (x1 - x0) * hash(k, salt or 97))
+    p[#p + 1] = math.floor(y0 + (y1 - y0) * hash(k, (salt or 97) + 1))
+  end
+  return p
 end
 
 sync({})
