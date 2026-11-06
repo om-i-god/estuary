@@ -46,6 +46,21 @@ return function(K)
   local GRASS = K.scatter(40, 0, 57, 128, 64, 80)
   -- faint stars out_hi brings out between the bright ones
   local FAINT = K.scatter(36, 2, 1, 126, 20, 81)
+  -- the reeds at the water's edge: their feet stand still (baked), their
+  -- tips sway
+  local REED_X, REED_H = {}, {}
+  for k = 0, 13 do
+    REED_X[k] = k * 9.3 + 4 * K.hash(k, 74)
+    for j = 0, 2 do REED_H[k * 3 + j] = 3 + 4 * K.hash(k * 3 + j, 75) end
+  end
+  local reed_feet = K.bake(function(rec)
+    for k = 0, 13 do
+      for j = 0, 2 do
+        local h = REED_H[k * 3 + j]
+        rec(1, REED_X[k] + j, WL - h * 0.5, 1, math.max(1, h * 0.5))
+      end
+    end
+  end)
   -- cattails close by: {x, height, phase}
   local CATTAILS = {{4, 17, 0.4}, {9, 13, 2.1}, {120, 15, 1.2}, {125, 11, 3.3}}
 
@@ -135,12 +150,13 @@ return function(K)
     end
     -- reeds at the water's edge, faint against the dark trees, swaying with
     -- out_mid
+    K.blit(reed_feet, 1 + mid)
     for k = 0, 13 do
-      local x = k * 9.3 + 4 * K.hash(k, 74)
+      local x = REED_X[k]
+      local base = K.flow(x, WL) * 0.2 + K.heave(x) * 0.4
       for j = 0, 2 do
-        local h = 3 + 4 * K.hash(k * 3 + j, 75)
-        local lean = (K.flow(x, WL) * 0.2 + sin(T * 0.6 + k + j) * (0.5 + 1.5 * mid) + K.heave(x) * 0.4) + (j - 1)
-        put(1 + mid, x + j, WL - h * 0.5, 1, h * 0.5)
+        local h = REED_H[k * 3 + j]
+        local lean = base + sin(T * 0.6 + k + j) * (0.5 + 1.5 * mid) + (j - 1)
         put(1 + mid, x + j + lean, WL - h, 1, h * 0.5)
       end
     end
@@ -153,8 +169,10 @@ return function(K)
         local lo = A[K.LO]
         K.streaks(l, WL + d, 6 + d % 4, 9 + d % 3, K.drift_x * (0.3 + d * 0.03) + d * 4.7, keep,
           function(x)
-            return K.heave(x + d * 3) * (0.3 + d * 0.06),
-              hi * 3.5 * math.max(0, sin(x * 0.9 + d * 1.7 + T * 5)) + lo * 1.6 * sin(x * 0.04 - T * 0.6 + d * 0.3)
+            local dl = 0
+            if hi > 0.02 then dl = hi * 3.5 * math.max(0, sin(x * 0.9 + d * 1.7 + T * 5)) end
+            if lo > 0.02 then dl = dl + lo * 1.6 * sin(x * 0.04 - T * 0.6 + d * 0.3) end
+            return K.heave(x + d * 3) * (0.3 + d * 0.06), dl
           end)
       end
     end
@@ -195,7 +213,7 @@ return function(K)
           local a = T * (0.5 + 0.1 * j) + j * 1.3 + i
           local x, y = cx + cos(a) * (3 + j * 1.6), cy + sin(a * 1.3) * (2 + j * 0.5)
           local l = p * (3.2 + 2 * K.chord_glow + 1.5 * breath) * (0.75 + 0.25 * sin(T * 1.7 + j * 2 + i))
-          put(l * 0.3, x - 1, y - 1, 3, 3)
+          if j < 2 then put(l * 0.3, x - 1, y - 1, 3, 3) end
           put(l, x, y, 1, 1)
           local ry = WL + (WL - y) * 0.55 + 1
           if ry < 63 then put(l * 0.4, x + K.heave(x + ry) * 0.6, ry, 2, 1) end
@@ -224,7 +242,7 @@ return function(K)
       elseif lv >= 0.5 then
         -- a soft glow round it, then the light itself
         if lv > 3.5 then put(lv * 0.28, f.x - 1, f.y - 1, 3, 3) end
-        if lv > 5 then
+        if lv > 7 then
           local h = lv * 0.3
           put(h, f.x - 2, f.y, 5, 1); put(h, f.x, f.y - 2, 1, 5)
         end
@@ -232,7 +250,7 @@ return function(K)
         -- a slow light climbs, trailing a long tail below it
         if f.kind == 3 and lit > 1 then
           f.y = f.y - DTS * 2.2
-          for k = 1, 6 do put(lit * (0.6 - k * 0.08), f.x + sin(T * 1.3 + k) * 0.8, f.y + k * 1.5, 1, 1) end
+          for k = 1, 4 do put(lit * (0.6 - k * 0.1), f.x + sin(T * 1.3 + k) * 0.8, f.y + k * 2, 1, 2) end
         end
         -- the reflection, below the edge, wavering
         local ry = WL + (WL - f.y) * 0.55 + 1

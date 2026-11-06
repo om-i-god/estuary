@@ -43,6 +43,18 @@ Built 2026-11-04: twelve themes, each in `lib/vis/<name>.lua`. The v2 test follo
   - mist: that the fog density follows the tuned out_lo / nat_amp gains (it was tuned against the sim's fake polls).
   - The theme name on the screen with K1 held: the longest is "fireflies 10/12".
 
+## Visuals v4
+Built 2026-11-05/06 (`docs/superpowers/specs/2026-11-05-estuary-visuals-v4-design.md`): every place gets a far, middle and near layer, three rare small happenings, the chord in the scene, slot-shaped note marks, a bar breath, a role for every poll and its own moment. The kit adds the hand-made stroke dither, baked static layers, the chord glide and the incident scheduler. Headless, Lua time per frame is about 1.1x v3 across the twelve (fireflies, ripples and koi run 1.3-1.4x at peak, postcards and reeds about 1.3x), and the peak draw calls are 700-1000 per frame (kelp and tide highest, under the 1100 budget).
+- On the device:
+  - CPU and frame rate per theme at a busy peak (three motifs, a swell, a moment, the polls high), especially kelp, tide, reeds and koi, which draw the most rects. If one drops frames, the first things to thin are the twinkle scatters (koi, kelp, flock) and the per-column work in tide.
+  - The stroke dither: whether skies, sand and fog read as soft, hand-made texture on the real panel or as noise, and whether the strokes shimmer as the bloom moves (they should change a few at a time, never crawl).
+  - The bar breath: a slow swell of light on each bar. Check it reads as breathing and never as a blink, at brightness 5 and 15.
+  - Incidents: one every minute or two, three kinds per place, each easing in and out over about three seconds. Check they are noticed but never steal the picture, and that none is too small to see at arm's length (the warbler in reeds, the strider in drift and the dragonfly in koi are the smallest).
+  - Lit area: several places sit at 32-35% lit at a full peak (rain, kelp, fireflies, flock, horizon). Check that peaks still feel calm, not busy, especially rain with drizzle, drops, a squall and the rainbow together.
+  - The chord: that a chord change is visible but eased in every place (clouds, bands, hills, swells, pools, stars, swarms, fog layers, pads, shafts), and that the glide (about three seconds) suits the music's harmonic rhythm.
+  - out_mid now has a clear job in every place; its gains were tuned against the sim's fake polls. Check it reads on real material (pad-heavy versus motif-heavy palettes).
+  - Theme switch: the fade out is now 0.45 s (was 0.3) because the brighter scenes made the old cut too sharp.
+
 ## Sounds v2: on-device listening checks
 Engine change: run SYSTEM > RESTART once before loading. The Mac checks (`test/sc/run.sh`) measure every voice and pad character alone and render one demo per palette; these are what only the device and ears can settle.
 - Balance by ear: RMS matching is within about 0.6 dB on the Mac, but the percussive voices (marimba, kalimba, celesta) still peak about 9-11 dB above the sustained ones (flute, glass), even with their softened mallets (5 ms onsets, longer and rounder decays). Listen for mallets poking out of the mix, or flute and glass sinking under the pad. Tune the per-voice GAIN constants in `lib/Engine_Estuary.sc`, then re-run `test/sc/run.sh` (it fails past 3 dB).
