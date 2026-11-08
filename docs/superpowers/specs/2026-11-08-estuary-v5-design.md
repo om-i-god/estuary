@@ -108,3 +108,10 @@ The user asked for "4 more places that were just as awesome and four more voices
 - **steelpan.** A mellow steelpan, never clangy.
 - **guitar.** A nylon pluck or warm harmonics.
 - **horn.** A soft 80s analog horn that swells slowly and never blares.
+
+## Addendum 2: two San Antonio places
+The user asked for "a theme called echo bridge based on the echo bridge in san antonio tx. and one called confluence based on confluence park". Both go after paddies, for 22 places in total, and both meet the same v4 bar.
+- **echo bridge.** The concrete closed-spandrel deck arch of the Roosevelt Ave bridge over the San Antonio River, known for its acoustics and for music under it before sunset. The arch and its reflection make an ellipse, under a warm sunset. Each note rises as a soft arc under the arch and then repeats as fading copies at the echo-time setting. Reverb tails linger on the underside of the arch. Incidents: a heron through the arch, a kayak, cliff swallows.
+- **confluence.** Confluence Park's concrete petal pavilions: paired hyperbolic-paraboloid petals that funnel rain to a cistern. Native plants grow around them, and San Pedro Creek meets the San Antonio River. Notes become droplets running down the petals into a glowing cistern pool whose level is the bloom. A swell is a rain shower. Incidents: a monarch butterfly, a great egret, a rain cloud.
+
+Both are stylised, with no logos or text.
