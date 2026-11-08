@@ -514,7 +514,7 @@ end
 if SNAP then
   assert(os.execute("mkdir -p '" .. SNAP .. "'"))
   local names = P.defs.theme.opts
-  assert(#names == 12, "expected 12 themes, got " .. #names)
+  assert(#names == 16, "expected 16 themes, got " .. #names)
   params:set("hud", 3)
   key(3, 1); key(3, 0)                                    -- bring the tide in
   local seen = {}

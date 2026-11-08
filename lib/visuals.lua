@@ -38,7 +38,7 @@
 local VIS = {}
 
 VIS.names = {"ripples", "horizon", "postcards", "rain", "tide", "drift",
-  "reeds", "koi", "kelp", "fireflies", "mist", "flock"}
+  "reeds", "koi", "kelp", "fireflies", "mist", "flock", "brook", "rockpool", "dew", "cascade"}
 
 local FPS = 20
 local TAU = 2 * math.pi

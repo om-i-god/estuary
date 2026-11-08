@@ -32,7 +32,7 @@ end
 -- the six v2 themes first, in their old order (saved psets keep pointing at
 -- the same theme), then the six v3 ones
 local NAMES = {"ripples", "horizon", "postcards", "rain", "tide", "drift",
-  "reeds", "koi", "kelp", "fireflies", "mist", "flock"}
+  "reeds", "koi", "kelp", "fireflies", "mist", "flock", "brook", "rockpool", "dew", "cascade"}
 
 local CHORDS = {{48, 55, 62, 64}, {45, 52, 60, 64}, {41, 48, 57, 64}, {43, 50, 59, 62}}
 
@@ -639,7 +639,7 @@ test("visuals no incident at boot", function()
   local V = include("lib/visuals")
   screen = NULLS
   for f = 1, 200 do
-    V.draw(1 + f % 12, mkS(), 1 / FPS)
+    V.draw(1 + f % #NAMES, mkS(), 1 / FPS)
     assert(not V._probe().incident, "an incident at frame " .. f)
   end
   screen = RAST.screen
