@@ -71,3 +71,26 @@ Engine change: run SYSTEM > RESTART once before loading. The Mac checks (`test/s
 - Palettes: play a few `new track`s in each mode. Each palette should feel like one record, and none should feel dark, busy or harsh. Check that pinning a palette in PARAMS > SOUND changes the sounds straight away and the pad on its next voicing.
 - The pedal's slow level swell (0.11 Hz, plus or minus 4%): it should not read as a wobble.
 - Old psets: load a pset saved with v1 and confirm the motif voices it chose (rhodes / bell / sine / marimba) still play.
+
+## Sounds v3: on-device listening checks
+Engine change: run SYSTEM > RESTART once before loading. On the Mac, `test/sc/run.sh` measures every voice and pad alone (the 18 voices sit within about 0.5 dB RMS, the 8 pads within about 2 dB), checks react (neutral at 0, an exact null against the v2 engine in NRT, water/room/self each measurable at 0.8, 60 s at max with the output fed back into the input staying bounded), and renders a demo per palette plus `react_0_*.wav` / `react_08_*.wav` (one palette under a water swell). These are the checks that need the device and your ears:
+- New voices by ear:
+  - harp: does the long ring muddy busy passages?
+  - koto: is the pitch settle (about 20 cents over 120 ms) heard as a gentle bend, never as out of tune?
+  - choir: does the "ooh" read as a voice, or as an organ? Check the slow onset on short notes.
+  - glock: is it rounder than the celesta, never piercing on motif 2/4 high notes?
+  - piano: does the felt read as soft rather than dull? Is the damper (it lifts 0.8 s after the note) too short?
+  - dulcimer: the paired-string shimmer should turn gently, never beat sour.
+  - steelpan: the octave bloom should be mellow, not clangy.
+  - guitar: warm nylon, not plasticky; the finger noise should be barely there.
+  - horn: soft brass, never blaring, especially at high bright and velocity; its chorus sits on one side only.
+- Balance: piano, guitar and kalimba peak highest (about -15 dBFS on a lone note against -32 dB RMS); horn, flute and glass peak lowest. Listen for plucks poking out and the horn or choir sinking.
+- New pads: shimmer's halo arrives a few seconds after each chord (is it too slow at short pad_xfade?); tape's two-cent drift should never be heard as wow; reed should sound like a soft harmonium, not a buzz.
+- CPU: by audio-rate UGen count the new voices sit at 15-33 (old: 20-24) and the shimmer pad at 71 (old pads: 29-47). Mac NRT timings are noisy; check the norns CPU readout on a busy stretch with lantern, parlour, cloister and boathouse (piano, choir, horn, dulcimer), and with the shimmer pad crossfading. est_react and est_motifmix add one control-rate synth and one small mixer.
+- React:
+  - at the default 0.5 under a water swell, the brightening should be felt rather than heard as an effect, and the reverb should widen with the water, not wash it out.
+  - room: with LISTEN on and a live room, check that echo feedback never leans far enough to smear the motifs, and that turning LISTEN off lets go within a couple of seconds.
+  - self: the pad's dip under busy passages should be invisible (no pumping); the reverb opening in sparse passages should feel like air, not a change of room.
+  - react 0 should sound exactly like sounds v2.
+- Palettes: with 20 palettes, play several `new track`s. Every palette should come round before any repeats, and each should feel like one record.
+- Old psets: load a pset saved with sounds v2 and confirm its pinned palette, pad sound and voices are unchanged.

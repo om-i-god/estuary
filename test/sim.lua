@@ -671,8 +671,18 @@ do
   local nv = 0
   for _ in pairs(VOICES_USED) do nv = nv + 1 end
   print(string.format("palette voices heard: %d of %d", nv, NVOICES))
-  if PMODE == 2 and MINUTES > 0 and MINUTES <= 6 and BARS >= 900 and (calls.note or 0) > 0 and nv <= 4 then
-    extra[#extra + 1] = "only " .. nv .. " voices heard across several tracks"
+  -- several short tracks: every palette comes round, so every voice is heard
+  if PMODE == 2 and MINUTES > 0 and MINUTES <= 6 and BARS >= 900 and (calls.note or 0) > 0 and nv < NVOICES then
+    local miss = {}
+    for v = 1, NVOICES do if not VOICES_USED[v] then miss[#miss + 1] = v end end
+    extra[#extra + 1] = "only " .. nv .. " of " .. NVOICES .. " voices heard across several tracks (missing " .. table.concat(miss, " ") .. ")"
+  end
+  local np = 0
+  for _ in pairs(PADS_USED) do np = np + 1 end
+  print(string.format("palette pads heard: %d of %d", np, NPADS))
+  -- the react params reach the engine (default depth, all sources)
+  if (calls.tweak or 0) > 0 and (TWV.react ~= 0.5 or TWV.react_src ~= 4) then
+    extra[#extra + 1] = "react tweaks not sent: react " .. tostring(TWV.react) .. " src " .. tostring(TWV.react_src)
   end
 end
 -- track end = stop, then play: each restart plays a whole track before the next stop

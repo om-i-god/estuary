@@ -74,7 +74,8 @@ if(pads.collect { |v| ("est_pad_" ++ v).asSymbol } == ~eng.padDefs.asArray, {
 (~eng.voiceDefs ++ ~eng.padDefs ++ [\est_pedal]).do { |d|
   var desc = SynthDescLib.global[d];
   if(desc.isNil, { fail.("no SynthDef " ++ d) }, {
-    ("CHECK ugens " ++ d ++ " " ++ desc.def.children.size).postln;
+    ("CHECK ugens " ++ d ++ " " ++ desc.def.children.size ++ " (audio rate "
+      ++ desc.def.children.count { |u| u.rate == \audio } ++ ")").postln;
   });
 };
 palettes.do { |p|
