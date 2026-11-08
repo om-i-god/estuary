@@ -93,3 +93,18 @@ The music's notes stay exactly as they are; `test/rules.lua` and each seed's mus
 
 ### Docs
 README: the new voices, pads and palettes, and what react does (what you'll hear). Add a sounds v3 listening-check section to `docs/v1-followups.md`.
+
+## Addendum (same day): four more places and four more voices
+The user asked for "4 more places that were just as awesome and four more voices as well".
+
+**Places:** these follow cascade, in this order, for twenty places in total. Each meets the same v4 bar.
+- **mangrove.** Roots arch into tea-coloured water while the tide rises and falls among them. Notes are fish between the roots, and the chord is the roots catching light. Incidents: a heron, a mudskipper, a canoe.
+- **aurora.** A calm fjord at night, with soft aurora curtains reflected in still water. Notes light rays, the chord is the curtain bands, and bloom sets the aurora's strength. Incidents: a shooting star, a seal, a lit cabin window.
+- **shoal.** A silver school of fish under a pier (boids, at most 40). Notes flash fish as they catch the light, and the chord is light bands on the piles. Incidents: a ray, a turtle, the school splitting around a larger fish.
+- **paddies.** Terraced rice paddies after rain, each terrace mirroring the sky. Notes ripple the terraces, the chord is the terrace light, and `nat_amp` is water trickling between them. Incidents: an egret, a distant hat moving along a path, frogs.
+
+**Voices:** four more, on top of B's five, appended in this order. The palettes grow to about 18–20.
+- **dulcimer.** A soft hammered dulcimer.
+- **steelpan.** A mellow steelpan, never clangy.
+- **guitar.** A nylon pluck or warm harmonics.
+- **horn.** A soft 80s analog horn that swells slowly and never blares.
