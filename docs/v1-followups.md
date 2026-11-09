@@ -56,6 +56,19 @@ Built 2026-11-05/06 (`docs/superpowers/specs/2026-11-05-estuary-visuals-v4-desig
   - out_mid now has a clear job in every place; its gains were tuned against the sim's fake polls. Check it reads on real material (pad-heavy versus motif-heavy palettes).
   - Theme switch: the fade out is now 0.45 s (was 0.3) because the brighter scenes made the old cut too sharp.
 
+## Visuals v5: device checks
+Built 2026-11-08 (`docs/superpowers/specs/2026-11-08-estuary-v5-design.md`, part A, extended twice during the build): ten new places after flock, in this order: brook, rockpool, dew, cascade, mangrove, aurora, shoal, paddies, echo bridge, confluence (22 in all; the list only grew at the end, so saved psets keep their theme). Each has parallax layers, three incidents, bloom as daylight, the hand-made dither, and passes the full v4 matrix. A name with a space lives in a file with an underscore (`echo bridge` is `lib/vis/echo_bridge.lua`).
+- Headless numbers (unit tests, any scenario): peak draw calls paddies 1081, rockpool 1064, brook 1057, dew 892, confluence 887, shoal 876, cascade 861, mangrove 850, echo bridge 836, aurora 799 (budget 1100). Lua time per frame at a busy peak is 0.20-0.42 ms against 0.16-0.39 ms for the first twelve; shoal (thirty boids) is the heaviest, about 1.07x mist. The lowest reactivity margin on any input is 0.034 (cascade, paddies) against the 0.03 floor; most inputs clear it two to ten times.
+- A new test runs each place with and without a moment, a note in each slot and each incident, and checks that what they add never jumps more than 8 typical frames' change in one frame over their whole length (the old onset test watched only 5 frames). It caught a light front wrapping round in confluence and dew. Wings beating (the geese in horizon and mist) come closest to the bound.
+- On the device:
+  - CPU and frame rate at a busy peak for brook and rockpool, which are closest to the draw-call budget, and shoal, which costs the most Lua time. If one drops frames: brook's streamline rows, rockpool's baked rock, shoal's school size (30).
+  - Whether each place reads at arm's length as itself: the stones in brook, the starfish and anemones in rockpool, the web in dew, the stepped fall in cascade, the arching roots in mangrove, the curtains in aurora, the school and the piles in shoal, the terraces in paddies, the arch and its echoes in echo bridge, the petals in confluence.
+  - The weakest inputs sit near the 0.03 floor (cascade bar and out_hi, paddies out_hi and mid): check they read on real material, not only on the sim's fake polls.
+  - echo bridge: that the echoes land in time with the audible echo at each echo time setting, and that the tail of light under the arch lingers about as long as the reverb.
+  - aurora: the curtains are calm, never flickering, at brightness 5 and 15; dew: the sky glow round the sun doesn't band.
+  - Lit area: paddies and confluence reach 34-35% lit at a full peak; check they still feel calm.
+  - The theme name with K1 held: the longest is now "echo bridge 21/22". While K1 is held the section (top right) steps aside so the two never overlap; check the name is clear of the screen's right half.
+
 ## Sounds v2: on-device listening checks
 Engine change: run SYSTEM > RESTART once before loading. The Mac checks (`test/sc/run.sh`) measure every voice and pad character alone and render one demo per palette; these are what only the device and ears can settle.
 - Balance by ear: RMS matching is within about 0.6 dB on the Mac, but the percussive voices (marimba, kalimba, celesta) still peak about 9-11 dB above the sustained ones (flute, glass), even with their softened mallets (5 ms onsets, longer and rounder decays). Listen for mallets poking out of the mix, or flute and glass sinking under the pad. Tune the per-voice GAIN constants in `lib/Engine_Estuary.sc`, then re-run `test/sc/run.sh` (it fails past 3 dB).
