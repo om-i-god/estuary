@@ -21,11 +21,12 @@
 //   note        voice midi vel dur pan bright send   (voice 1 rhodes 2 bell 3 sine 4 marimba
 //                                                    5 vibes 6 celesta 7 kalimba 8 flute 9 glass
 //                                                    10 harp 11 koto 12 choir 13 glock 14 piano
-//                                                    15 dulcimer 16 steelpan 17 guitar 18 horn)
+//                                                    15 dulcimer 16 steelpan 17 guitar 18 horn
+//                                                    19 ocarina 20 bowl 21 musicbox 22 chime)
 //   pad         m1 m2 m3 m4     (crossfades from the current pad over pad_xfade s,
 //                                in the character set by `tweak pad_sound`:
 //                                1 warm 2 strings 3 glass 4 air 5 organ
-//                                6 shimmer 7 tape 8 reed)
+//                                6 shimmer 7 tape 8 reed 9 hum 10 bowed)
 //   pedal       midi vel dur   (one voice: a new pedal releases the old; vel 0 only releases)
 //   nature_load slot path       (1 bed, 2 swell, 3 moment)
 //   nature_play slot level fade (1/2 loop from a random position when rising
@@ -127,8 +128,8 @@ Engine_Estuary : CroneEngine {
     st.put(\pad_xfade, 4.0);
     st.put(\pad_sound, 1);
 
-    voiceDefs = [\est_rhodes, \est_bell, \est_sine, \est_marimba, \est_vibes, \est_celesta, \est_kalimba, \est_flute, \est_glass, \est_harp, \est_koto, \est_choir, \est_glock, \est_piano, \est_dulcimer, \est_steelpan, \est_guitar, \est_horn];
-    padDefs = [\est_pad_warm, \est_pad_strings, \est_pad_glass, \est_pad_air, \est_pad_organ, \est_pad_shimmer, \est_pad_tape, \est_pad_reed];
+    voiceDefs = [\est_rhodes, \est_bell, \est_sine, \est_marimba, \est_vibes, \est_celesta, \est_kalimba, \est_flute, \est_glass, \est_harp, \est_koto, \est_choir, \est_glock, \est_piano, \est_dulcimer, \est_steelpan, \est_guitar, \est_horn, \est_ocarina, \est_bowl, \est_musicbox, \est_chime];
+    padDefs = [\est_pad_warm, \est_pad_strings, \est_pad_glass, \est_pad_air, \est_pad_organ, \est_pad_shimmer, \est_pad_tape, \est_pad_reed, \est_pad_hum, \est_pad_bowed];
 
     // ---------------------------------------------------------------- voices
 
@@ -456,6 +457,87 @@ Engine_Estuary : CroneEngine {
       vout.value([sig, ((sig * 0.6) + (DelayC.ar(sig, 0.02, (0.008 + (SinOsc.kr(0.37, Rand(0, 2pi)) * 0.002))) * 0.6))], pan, out, echoOut, verbOut, echo, verb);
     }).add;
 
+    // ocarina: a round vessel flute, purer than the flute. a sine with only
+    // a trace of the 2nd and 3rd, a soft chiff as the note speaks (a puff of
+    // band-passed noise up at the 3rd harmonic while the pitch settles from
+    // a few cents flat), a breath under it all, a slow vibrato once it has
+    // settled; holds for the note's length
+    SynthDef(\est_ocarina, {
+      arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var atk   = (0.075 - (bright * 0.03)) * Rand(0.85, 1.15);
+      var env   = EnvGen.kr(Env([0, 1, 0.86, 0.86, 0], [atk, 0.22, (dur - atk - 0.22).max(0.01), 0.35], [\sin, -2, 0, -3]), doneAction: 2);
+      var vd    = EnvGen.kr(Env([0, 0, 1], [0.45, 1.2], [0, 2])) * 0.0028;
+      var f     = freq * EnvGen.kr(Env([0.9945, 1], [0.09], [-3])) * (1 + (SinOsc.kr(Rand(4.0, 4.6), Rand(0, 2pi)) * vd));
+      var core  = SinOsc.ar(f) + (SinOsc.ar(f * 2) * (0.03 + (0.06 * bright))) + (SinOsc.ar((f * 3).min(16000)) * (0.012 * bright));
+      var n     = WhiteNoise.ar;
+      var chiff = BPF.ar(n, (freq * 3).min(9000), 0.5) * ((900 / freq).sqrt * 0.22) * EnvGen.kr(Env([0, 1, 0], [0.01, 0.07], [\sin, -4])) * (0.4 + (vel * 0.4));
+      var air   = BPF.ar(n, (freq * 1.2).min(10000), 0.9) * ((667 / freq).sqrt * 0.3) * (0.17 + (0.08 * bright));
+      var sig   = (core + chiff + air) * env * (amp * 0.62);
+      vout.value(sig, pan, out, echoOut, verbOut, echo, verb);
+    }).add;
+
+    // singing bowl, struck softly: three near-harmonic modes (1, 2.005,
+    // 3.01: only a hint of a bowl's stretch, so it stays sweet), each with a
+    // partner a fraction of a hertz to a hertz and a half away so it beats
+    // slowly (the bowl's slow wah), a short quiet strike glint at the 4th, a
+    // very long ring (about 7 s at middle C) and a slow sway between the
+    // speakers
+    SynthDef(\est_bowl, {
+      arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var ks  = (freq / 261).clip(0.25, 8).pow(-0.3);
+      var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
+      var atk = 0.008;
+      // the ring's shape runs over 9 s (at middle C) but the synth ends at 7
+      // s: from 6.3 s, where the ring is already about 27 dB down, it fades
+      // out over 0.7 s (the last stretch would be below -30 dB anyway)
+      var e1  = EnvGen.ar(Env([0, 1, 0], [atk, (9.0 * ks)], [\sin, -4])) * EnvGen.kr(Env([1, 1, 0], [(6.3 * ks), (0.7 * ks)], [0, -2]), doneAction: 2);
+      var e2  = EnvGen.kr(Env([0, 1, 0], [atk, (4.5 * ks)], [\sin, -4]));
+      var e3  = EnvGen.kr(Env([0, 1, 0], [atk, (2.2 * ks)], [\sin, -4.5]));
+      var f2  = (freq * 2.005).min(16000), f3 = (freq * 3.01).min(16000);
+      var m1  = (SinOsc.ar(freq) + SinOsc.ar(freq + Rand(0.4, 0.8), Rand(0, 2pi), 0.35)) * e1;
+      var m2  = (SinOsc.ar(f2, Rand(0, 2pi)) + SinOsc.ar(f2 + Rand(0.8, 1.4), Rand(0, 2pi), 0.4)) * (e2 * (0.18 + (0.14 * h)));
+      var m3  = SinOsc.ar(f3, Rand(0, 2pi)) * (e3 * (0.05 + (0.08 * h)));
+      var gl  = SinOsc.ar((freq * 4.02).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.15], [\sin, -5])) * (0.01 + (0.03 * h));
+      var sh  = SinOsc.kr(Rand(0.15, 0.25), [0, pi] + Rand(0, 2pi)) * 0.1;
+      var sig = (m1 + m2 + m3 + gl) * (amp * 0.66);
+      vout.value([sig * (1 + sh[0]), sig * (1 + sh[1])], pan, out, echoOut, verbOut, echo, verb);
+    }).add;
+
+    // music box: a tiny steel comb tine plucked by a pin. a pure fundamental
+    // a few cents off true on each note (no two tines quite alike), a quiet
+    // octave, the tine's second bending mode (6.27) as a brief sweet glint
+    // and a tiny pin tick
+    SynthDef(\est_musicbox, {
+      arg out, echoOut, verbOut, freq=523, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var ks  = (freq / 261).clip(0.25, 8).pow(-0.4);
+      var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
+      var atk = 0.005;
+      var f   = freq * Rand(0.9965, 1.0035);
+      var m1  = SinOsc.ar(f) * EnvGen.ar(Env([0, 1, 0], [atk, (1.7 * ks)], [\sin, -4.5]), doneAction: 2);
+      var m2  = SinOsc.ar((f * 2).min(16000), Rand(0, 2pi)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.5 * ks)], [\sin, -5])) * (0.08 + (0.08 * h));
+      var m3  = SinOsc.ar((f * 6.27).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, 0.07], [\sin, -5])) * (0.012 + (0.035 * h));
+      var tk  = BPF.ar(WhiteNoise.ar, (f * 8).min(9000), 1.5) * EnvGen.kr(Env([0, 1, 0], [0.005, 0.012], [\sin, -4])) * 0.025;
+      var sig = (m1 + m2 + m3 + tk) * (amp * 1.66);
+      vout.value([sig * 1.03, sig * 0.97], pan, out, echoOut, verbOut, echo, verb);
+    }).add;
+
+    // wind chime, a soft tube with a padded striker: a round, long
+    // fundamental and the tube's 2.76 and 5.40 modes kept low and short
+    // (rounder than the bell: no FM, no bright strike), a 7 ms onset, and the
+    // tube swinging slowly across the speakers as it rings
+    SynthDef(\est_chime, {
+      arg out, echoOut, verbOut, freq=523, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      var ks  = (freq / 261).clip(0.25, 8).pow(-0.35);
+      var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
+      var atk = 0.007;
+      var m1  = SinOsc.ar(freq) * EnvGen.ar(Env([0, 1, 0], [atk, (4.5 * ks)], [\sin, -4]), doneAction: 2);
+      var m2  = SinOsc.ar((freq * 2.76).min(16000), Rand(0, 2pi)) * EnvGen.kr(Env([0, 1, 0], [atk, (1.3 * ks)], [\sin, -4.5])) * (0.05 + (0.09 * h));
+      var m3  = SinOsc.ar((freq * 5.4).min(17000)) * EnvGen.kr(Env([0, 1, 0], [atk, (0.25 * ks)], [\sin, -5])) * (0.008 + (0.025 * h));
+      var sw  = SinOsc.kr(Rand(0.45, 0.7), [0, pi] + Rand(0, 2pi)) * 0.18;
+      var sig = (m1 + m2 + m3) * (amp * 0.95);
+      vout.value([sig * (1 + sw[0]), sig * (1 + sw[1])], pan, out, echoOut, verbOut, echo, verb);
+    }).add;
+
     // pads: four notes, gate 0 releases over `rel` s, so two pads crossfade
     // (the `pad` command starts the next one at `atk` = pad_xfade). Every
     // character keeps that contract; a GAIN per character matches them
@@ -596,6 +678,45 @@ Engine_Estuary : CroneEngine {
       sig = LPF.ar(LPF.ar(sig, cut), (cut * 1.3));
       sig = HPF.ar(sig, 90);
       Out.ar(out, sig * env * amp * 1.53);
+    }).add;
+    // hum: a wordless closed-mouth choir ("mm"). two singers per note a
+    // fraction of a hertz apart, the first a sine with a soft 2nd and 3rd
+    // (a hum is mostly its fundamental), the second a plain sine; each
+    // note's pitch lives a hair and its breath swells on its own; through a
+    // soft low-pass that opens with bright
+    SynthDef(\est_pad_hum, {
+      arg out, f1=130, f2=196, f3=293, f4=392, amp=0.08, bright=0.5, atk=4, rel=4, gate=1;
+      var env = EnvGen.kr(Env.asr(atk, 1, rel, [2, -2]), gate, doneAction: 2);
+      var cut = 700 + (bright * 1600);
+      var sig = [f1, f2, f3, f4].collect { |f, i|
+        var d = f * (1 + (LFNoise2.kr(0.2) * 0.001));
+        var v = SinOsc.ar(d) + (SinOsc.ar(d * 2, 0, (0.22 + (0.12 * bright)))) + (SinOsc.ar((d * 3).min(15000), 0, 0.06))
+          + SinOsc.ar(f + Rand(0.12, 0.3), Rand(0, 2pi), 0.7);
+        Pan2.ar(v * (1 + (LFNoise2.kr(0.1) * 0.15)), [-0.45, -0.15, 0.15, 0.45][i]);
+      };
+      sig = LPF.ar(LPF.ar(Mix(sig), cut), (cut * 1.6));
+      Out.ar(out, sig * (env * (amp * 0.8)));
+    }).add;
+
+    // bowed: a bowed vibraphone bar / glass rim. each note swells in on its
+    // own slow bow (a little later for each), to a pure core with a faint
+    // octave and the bar's 4th-mode shine that grows in; the bow's pressure
+    // breathes slowly in the level, a very soft band of noise at the note
+    // (the hair on the bar) sits under it, and the shine turns slowly
+    // across the speakers
+    SynthDef(\est_pad_bowed, {
+      arg out, f1=130, f2=196, f3=293, f4=392, amp=0.08, bright=0.5, atk=4, rel=4, gate=1;
+      var env = EnvGen.kr(Env.asr(atk, 1, rel, [2, -2]), gate, doneAction: 2);
+      var n   = WhiteNoise.ar;
+      var sig = [f1, f2, f3, f4].collect { |f, i|
+        var bow  = EnvGen.kr(Env([0.3, 0.3, 1], [(atk * 0.12 * i), (atk * 0.6)], [0, 2])) * (1 + (LFNoise2.kr(0.13) * 0.1));
+        var core = SinOsc.ar(f) + SinOsc.ar((f * 2).min(15000), Rand(0, 2pi), (0.05 + (0.05 * bright)));
+        var sh   = SinOsc.ar((f * 4).min(15000), 0, ((0.03 + (0.05 * bright)) * EnvGen.kr(Env([0, 1], [(atk + 1.5)], [2]))));
+        var hair = BPF.ar(n, f, 0.01) * (f.reciprocal.sqrt * (60 + (40 * bright)));
+        Pan2.ar(((core + hair) * bow) + sh, ([-0.5, -0.17, 0.17, 0.5][i] + (SinOsc.kr(Rand(0.05, 0.09), Rand(0, 2pi)) * 0.15)).clip(-1, 1));
+      };
+      sig = LPF.ar(Mix(sig), 8000);
+      Out.ar(out, sig * (env * (amp * 0.95)));
     }).add;
     // pad mixer: level (and est_react's gentle duck, 1 at react 0), plus sends
     SynthDef(\est_padmix, {

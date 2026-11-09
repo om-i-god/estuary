@@ -14,10 +14,11 @@
 local P = {}
 
 -- keep in step with voiceDefs / padDefs in lib/Engine_Estuary.sc
-P.VOICES = {"rhodes", "bell", "sine", "marimba", "vibes", "celesta", "kalimba", "flute", "glass", "harp", "koto", "choir", "glock", "piano", "dulcimer", "steelpan", "guitar", "horn"}
-P.PADS = {"warm", "strings", "glass", "air", "organ", "shimmer", "tape", "reed"}
+P.VOICES = {"rhodes", "bell", "sine", "marimba", "vibes", "celesta", "kalimba", "flute", "glass", "harp", "koto", "choir", "glock", "piano", "dulcimer", "steelpan", "guitar", "horn", "ocarina", "bowl", "musicbox", "chime"}
+P.PADS = {"warm", "strings", "glass", "air", "organ", "shimmer", "tape", "reed", "hum", "bowed"}
 
--- bright: added to each note's brightness; send: multiplies its echo/reverb send
+-- bright: added to each note's brightness; send: multiplies its echo/reverb send.
+-- since: the release a palette arrived in (none = the first ones); see draw
 P.PALETTES = {
   {name = "harbor", voices = {"rhodes", "bell", "sine", "vibes"}, pad = "warm", bright = 0.0, send = 1.0},
   {name = "shallows", voices = {"marimba", "celesta", "flute", "kalimba"}, pad = "air", bright = 0.05, send = 0.9},
@@ -40,6 +41,13 @@ P.PALETTES = {
   {name = "promenade", voices = {"horn", "steelpan", "rhodes", "dulcimer"}, pad = "strings", bright = 0.0, send = 1.0},
   {name = "cloister", voices = {"choir", "dulcimer", "horn", "bell"}, pad = "glass", bright = -0.05, send = 1.2},
   {name = "courtyard", voices = {"horn", "steelpan", "guitar", "koto"}, pad = "tape", bright = 0.0, send = 0.95},
+  -- sounds v4 (names clash with no place)
+  {name = "pavilion", voices = {"ocarina", "musicbox", "kalimba", "chime"}, pad = "hum", bright = 0.05, send = 1.05, since = 4},
+  {name = "conservatory", voices = {"piano", "chime", "bowl", "musicbox"}, pad = "bowed", bright = 0.0, send = 1.1, since = 4},
+  {name = "observatory", voices = {"bowl", "chime", "sine", "glock"}, pad = "bowed", bright = 0.05, send = 1.2, since = 4},
+  {name = "arboretum", voices = {"guitar", "musicbox", "ocarina", "chime"}, pad = "warm", bright = 0.0, send = 1.0, since = 4},
+  {name = "aquarium", voices = {"bowl", "celesta", "ocarina", "glass"}, pad = "shimmer", bright = 0.05, send = 1.15, since = 4},
+  {name = "gallery", voices = {"ocarina", "vibes", "bowl", "musicbox"}, pad = "hum", bright = -0.05, send = 1.05, since = 4},
 }
 
 -- what the sound listens to (PARAMS > SOUND > react source): the engine's
@@ -81,14 +89,35 @@ local function draw(S, seed)
     for j = 1, n do if j ~= S.palette then cand[#cand + 1] = j end end
   end
   -- of those, the ones bringing the most voices not yet heard (so every
-  -- voice comes round soon), then a seeded pick among them
+  -- voice comes round soon), then a seeded pick among them. palettes are
+  -- weighed release by release, oldest first: a later release's palettes
+  -- are drawn once the earlier ones left in the bag bring nothing new (or
+  -- none are left). so the earlier palettes come round exactly as they did
+  -- before a release was added (an old seed's first tracks keep their
+  -- sound), and the new ones follow straight after
   local heard = S.voices_heard or {}
-  local best, top = {}, -1
-  for _, j in ipairs(cand) do
-    local new = 0
-    for _, v in ipairs(P.PALETTES[bag[j]].voices) do if not heard[v] then new = new + 1 end end
-    if new > top then best, top = {j}, new elseif new == top then best[#best + 1] = j end
+  local function most_new(set)
+    local best, top = {}, -1
+    for _, j in ipairs(set) do
+      local new = 0
+      for _, v in ipairs(P.PALETTES[bag[j]].voices) do if not heard[v] then new = new + 1 end end
+      if new > top then best, top = {j}, new elseif new == top then best[#best + 1] = j end
+    end
+    return best, top
   end
+  local tiers, order = {}, {}
+  for _, j in ipairs(cand) do
+    local t = P.PALETTES[bag[j]].since or 0
+    if not tiers[t] then tiers[t] = {}; order[#order + 1] = t end
+    table.insert(tiers[t], j)
+  end
+  table.sort(order)
+  local best, top = {}, 0
+  for _, t in ipairs(order) do
+    best, top = most_new(tiers[t])
+    if top > 0 then break end
+  end
+  if top <= 0 then best = most_new(cand) end
   local i = table.remove(bag, best[(hash(seed) % #best) + 1])
   for _, v in ipairs(P.PALETTES[i].voices) do heard[v] = true end
   local all = true
