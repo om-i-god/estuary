@@ -65,10 +65,15 @@ return function(K)
 
   local function sample(u, v) return u * 127, 4 + v * 30 end
   -- a note's ray standing up from yb
+  -- (bright at its foot, thinning and fading as it rises, a faint glow
+  -- either side: a ray of light, not a bar)
   local function ray(x, yb, l, h)
-    put(l, x, yb - h * 0.4, 2, h * 0.4 + 2)
-    put(l * 0.6, x, yb - h, 2, h * 0.6)
-    put(l * 0.3, x - 2, yb - h * 0.6, 6, h * 0.5)
+    put(l, x, yb - h * 0.3, 1, h * 0.3 + 2)
+    put(l * 0.55, x + 1, yb - h * 0.3, 1, h * 0.3 + 1)
+    put(l * 0.75, x, yb - h * 0.65, 1, h * 0.35)
+    put(l * 0.4, x, yb - h, 1, h * 0.35)
+    put(l * 0.3, x - 1, yb - h * 0.75, 3, h * 0.7)
+    put(l * 0.15, x - 2, yb - h * 0.5, 5, h * 0.4)
   end
 
   function M.draw()
@@ -76,7 +81,7 @@ return function(K)
     local bloom, breath, sw = K.bloom, K.breath, K.sw_disp
     local hi, mid, nat, lo = A[K.HI], A[K.MID], A[K.NAT], A[K.LO]
     ph = ph + K.DTS * (0.25 + 0.9 * A[K.AMP])
-    local power = 0.45 + 0.9 * bloom + 0.8 * breath + 0.45 * sw
+    local power = 0.62 + 0.8 * bloom + 0.8 * breath + 0.45 * sw
     -- stars, dimmer where the aurora burns
     for k, s in ipairs(STARS) do
       put((1.3 + 0.8 * sin(T * 0.9 + s[3])) * s[4] * (1.1 - 0.3 * bloom), s[1], s[2], 1, 1)
@@ -114,7 +119,9 @@ return function(K)
             put(l * 0.3, x, yb + 1, 2, 1)
             put(l * 0.45, x, yb - 1 - floor(h * 0.4), 2, floor(h * 0.4))
             put(l * 0.2, x, yb - 1 - h, 2, h - floor(h * 0.4))
-            if x % 6 == 0 then put(l * 0.28, x, yb - h - 4, 1, 4 + floor(h * 0.3)) end
+            -- (at their own columns and heights, never a comb)
+            local rk = K.hash(x, 709)
+            if rk < 0.3 then put(l * 0.28, x + (rk < 0.15 and 1 or 0), yb - h - 3 - floor(4 * rk / 0.3), 1, 3 + floor(h * 0.3)) end
             -- and lying in the still water, broken
             if x % 4 == 0 then
               local ry = WL + (WL - yb) * 0.35
@@ -148,11 +155,11 @@ return function(K)
         local e = ease(age / 0.3) * (1 - ease((age - 2.2) / 3.3)) * cf
         local yb = 34 - mk.u * 16
         if mk.slot == 1 then
-          ray(mk.x, yb, 9 * e, 18)
+          ray(mk.x, yb, 11 * e, 20)
         elseif mk.slot == 2 then
-          ray(mk.x - 3, yb, 8 * e, 14); ray(mk.x + 3, yb, 8 * e, 16)
+          ray(mk.x - 3, yb, 9.5 * e, 15); ray(mk.x + 3, yb, 9.5 * e, 17)
         elseif mk.slot == 3 then
-          ray(mk.x + age * 8, yb, 8.5 * e, 15)
+          ray(mk.x + age * 8, yb, 10 * e, 17)
           put(3 * e, mk.x, yb, age * 8, 1)
         else
           local pu = 0.6 + 0.4 * sin(age * 4)

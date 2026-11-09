@@ -94,7 +94,15 @@ return function(K)
       if not inside(x, y) and not inside(x, y + 3) and not inside(x, y - 3) then rec(1.6, x, y, 1, 1) end
     end
   end)
-  local rim = K.bake(function(rec)
+  -- (the wet lip catches the light unevenly: each piece its own level,
+  -- a few left dark, so it reads as rock, not an outline on a map)
+  local rim = K.bake(function(rec0)
+    local q = 0
+    local function rec(l, x, y, w, h)
+      q = q + 1
+      local f = K.hash(q, 315)
+      if f > 0.1 then rec0(l * (0.65 + 0.6 * K.hash(q, 316)), x, y, w, h) end
+    end
     for y = PTOP, PBOT do
       local l, r = PL[y], PR[y]
       local ul, ur = PL[y - 1], PR[y - 1]
@@ -191,8 +199,15 @@ return function(K)
       local gap = 15 + y * 3
       local off = K.drift_x * (0.8 + y * 0.2) + T * (2 + y) + y * 11
       for x = off % gap - gap, 127, gap do
+        -- (a breaker lifts by sharing its light with the row below, and
+        -- the water sounds lengthen it a fraction at a time)
         local w = sin(x * 0.07 + y - T * 0.9)
-        put(1.4 + 0.5 * bloom + (w > 0.1 and nat * 7 * (w - 0.1) or 0) + K.bj(x + y * 40), x, y + (w > 0.6 and 1 or 0), 6 + floor(nat * 5), 1)
+        local l = 1.4 + 0.5 * bloom + (w > 0.1 and nat * 7 * (w - 0.1) or 0) + K.bj(x + y * 40)
+        local dn = K.ramp(w, 0.55, 0.68)
+        local ww = 6 + nat * 5
+        local wi = floor(ww)
+        K.vshare(l, x, y, wi, dn)
+        if nat > 0.02 then put(l * (ww - wi), x + wi, y + (dn > 0.5 and 1 or 0), 1, 1) end
       end
     end
     K.blit(rock, 1 + 0.35 * bloom)
@@ -237,8 +252,23 @@ return function(K)
         local paw = sin(x * 0.06 - T * 0.7 + row * 0.9) * sin(T * 0.23 + row)
         local w = sin(x * 0.17 + y * 0.5 - T * 0.8)
         local gl = sin(x * 0.31 - y * 0.7 + T * 1.7)
-        local l = (w > 0.2 and 1.2 or 0) + (paw > 0.2 and mid * 4.5 * paw or 0) + 0.5 * K.energy + (gl > 0.4 and hi * 7 * (gl - 0.4) or 0)
-        if l > 0.6 then put(l + K.bj(k), x, y + K.heave(x) * 0.3, 2 + floor(mid * 3 * math.max(0, paw)), 1) end
+        -- (every part comes and goes by a ramp: no ripple switches on)
+        local l = 1.2 * K.ramp(w, 0.05, 0.35) + (paw > 0.2 and mid * 4.5 * (paw - 0.2) * 1.25 or 0) + 0.5 * K.energy + (gl > 0.4 and hi * 7 * (gl - 0.4) or 0)
+        local pw = mid * 3 * math.max(0, paw)
+        local pwi = floor(pw)
+        if l > 0.3 then
+          local ll = (l + K.bj(k)) * K.ramp(l, 0.3, 0.8)
+          local yy = y + K.heave(x) * 0.3
+          -- (a fraction of a pixel only while it is well between: the
+          -- paws stay inside the draw budget)
+          local fpw = pw - pwi
+          if fpw > 0.25 and fpw < 0.75 then
+            put(ll, x, yy, 2 + pwi, 1)
+            put(ll * fpw, x + 2 + pwi, yy, 1, 1)
+          else
+            put(ll, x, yy, 2 + pwi + (fpw >= 0.75 and 1 or 0), 1)
+          end
+        end
       end
     end
     -- the weed, swaying with the heave
@@ -281,7 +311,7 @@ return function(K)
         star(x, y, r, spin[i], (3 + 0.8 * bloom + 2.4 * K.chord_glow) * p)
         -- wet, its arms glint with out_hi
         local g = hi * 6 * math.max(0, sin(T * 3.3 + i * 1.9))
-        if g > 0.5 then put(g, x + cos(spin[i]) * r, y + sin(spin[i]) * r * 0.85, 2, 1); put(g * 0.8, x - 1, y - 2, 1, 1) end
+        if g > 0.5 then put(g - 0.5, x + cos(spin[i]) * r, y + sin(spin[i]) * r * 0.85, 2, 1); put((g - 0.5) * 0.8, x - 1, y - 2, 1, 1) end
       end
     end
     -- the notes: small creatures darting

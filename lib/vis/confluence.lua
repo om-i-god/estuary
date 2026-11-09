@@ -106,7 +106,15 @@ return function(K)
   end)
   -- the native garden close by: grasses {x, height, phase}, flowers {x, y, phase}
   local GRASS, FLOW = {}, {}
-  for k = 1, 16 do GRASS[k] = {k * 8 - 5 + 6 * K.hash(k, 1204), 3 + 8 * K.hash(k, 1205), K.hash(k, 1206) * 6, K.hash(k, 1210) < 0.5 and -1 or 1} end
+  -- (clumps at their own spacing: a garden, not a border)
+  do
+    local x = 1
+    for k = 1, 18 do
+      GRASS[k] = {x, 3 + 8 * K.hash(k, 1205), K.hash(k, 1206) * 6, K.hash(k, 1210) < 0.5 and -1 or 1}
+      x = x + 3 + 10 * K.hash(k, 1204)
+      if x > 127 then break end
+    end
+  end
   for k = 1, 22 do FLOW[k] = {4 + 120 * K.hash(k, 1207), 56 + 6 * K.hash(k, 1208), K.hash(k, 1209) * 6} end
   local DEW = {}
   for _, p in ipairs(PET) do
@@ -150,13 +158,17 @@ return function(K)
     K.blit(far, 1 + 0.4 * bloom)
     -- the two waters meeting: the creek coming in from the left, the river
     -- from the right, shimmering where they meet
-    local off = (T * (2 + 6 * A[K.AMP])) % 4
+    -- (each dash keeps its own jitter as it runs on, so the row never
+    -- re-levels when the run wraps)
+    local run = T * (2 + 6 * A[K.AMP])
+    local sh = floor(run / 4)
+    local off = run - sh * 4
     for x0 = 0, 127, 4 do
       local x = x0 + off - 2
       local y = x < 64 and creek(x) or river(x)
       local meet = math.max(0, 1 - abs(x - 64) / 34)
       local f = sin(x * 0.3 - T * (1.5 + 3 * A[K.AMP]))
-      put(1.6 + 0.6 * bloom + (f > 0.3 and 1 or 0) + nat * 4.5 + meet * nat * 8 * math.max(0, sin(x * 0.9 + T * 4)) + K.bj(x0) * 0.4, x, y, 3, 1)
+      K.dash(1.6 + 0.6 * bloom + K.ramp(f, 0.15, 0.45) + nat * 4.5 + meet * nat * 8 * math.max(0, sin(x * 0.9 + T * 4)) + K.bj(x0 // 4 - sh) * 0.4, x, y, 3)
     end
     for q = 0, 9 do
       local x = 38 + q * 6 + sin(T * 1.3 + q) * 2
@@ -172,11 +184,13 @@ return function(K)
         local pt = PET[i * 2 - 1 + (i % 2)]
         local hu = clamp((m - 36) / 40, 0.1, 0.95)
         local l = (5 + 3 * K.chord_glow) * p
-        for j = 4, 40, 2 do
+        -- (every row of the face, the light falling off smoothly from its
+        -- height: a lit surface, not ruled hatching)
+        for j = 4, 40 do
           local u = j / 40
           local x, w, y = petal(pt, u)
-          local d = abs(u - hu) / 0.4
-          if d < 1 then put(l * (1 - d) + K.bj(j + i * 40) * 0.4, x - w * 0.8, y, math.max(1, w * 1.6), 1) end
+          local d = abs(u - hu) / 0.3
+          if d < 1 then put(l * (1 - d * d) * 0.85 + K.bj(j * 3 + i * 40) * 0.85, x - w * 0.7, y, math.max(1, w * 1.4), 1) end
         end
       end
     end

@@ -60,7 +60,7 @@ return function(K)
 
   -- dune grass in the near corner: {x, height, phase}
   local GRASS = {}
-  for k = 1, 9 do GRASS[k] = {106 + k * 2.2 + 2 * K.hash(k, 71), 4 + 5 * K.hash(k, 72), K.hash(k, 73) * 6} end
+  for k = 1, 6 do GRASS[k] = {104 + k * 3.6 + 2 * K.hash(k, 71), 4 + 6 * K.hash(k, 72), K.hash(k, 73) * 6} end
 
   local function shore_y(b) return 52 - b * 30 end
 
@@ -120,18 +120,23 @@ return function(K)
     local sun_x, sun_y = -20 + ma * 12, 12 + 3 * sin(ma * 0.3)
     -- the far line: a thin strip of sky
     for y = 0, 2 do K.dither_row((1 + 0.9 * bloom) * (0.5 + y * 0.3) + breath * 1.2, y) end
-    put(2 + bloom, 0, 3, 128, 1)
+    K.hline(2 + bloom, 3, 0, 128, 7)
     for x = 0, 126, 2 do
       local c = x // 2
       local bl, wet = hist_at(x, scroll)
       local edge = ease((x - 40) / 76)               -- 0 to the left .. 1 at the live edge
+      -- (the beach has its own small cusps and bays, so even a flat
+      -- history never draws a ruled line)
       local yl = shore_y(bl) + K.heave(x) * 0.5 + edge * sin(T * 1.1 + x * 0.3) * 0.6
+        + 1.1 * sin(x * 0.17 + 1.3) + 0.6 * sin(x * 0.41)
       -- the sea above the line: swell lines that run in toward the beach,
       -- brighter near it; the chord's four long swells among them
       -- (every other column, two px wide: the lines read the same at half
       -- the cost)
       if c % 2 == 0 then
-        local bend = floor(1.5 * sin(x * 0.045 + T * 0.25) + 0.5)
+        -- (the lines' bend is fixed: they move by their light, never by a
+        -- column of dashes hopping a row)
+        local bend = floor(1.5 * sin(x * 0.045 + 1.1) + 0.5)
         for yy = 5 + (c // 2) % 3, yl - 3, 4 do
           local near = 1 - (yl - yy) / 50
           local w = sin(x * 0.07 + yy * 0.55 - T * 0.9 + K.drift_x * 0.08) + 0.6 * sin(x * 0.03 - yy * 0.2 + T * 0.3)
@@ -141,9 +146,14 @@ return function(K)
             local d = dx * dx + dy * dy
             if d < 1 then lit = sun_e * (1 - d) * 5 end
           end
-          if w > 0.7 - 0.35 * near - 0.45 * mid - lit * 0.3 then
-            put((w > 1.25 and 2 or 1) + near * (0.8 + breath * 1.5) + mid * 1.3 + lit
-              + hi * 5 * math.max(0, sin(x * 1.3 + yy * 2.1 + T * 8)), x + (w > 1 and 0 or 1), yy + bend, w > 1.1 and 4 or 3, 1)
+          -- (a dash fades in and out with its wave, brightens on the crest
+          -- and grows a fourth pixel by its light: nothing switches)
+          local th = 0.7 - 0.35 * near - 0.45 * mid - lit * 0.3
+          if w > th then
+            local l = (1 + K.ramp(w, 1.05, 1.45) + near * (0.8 + breath * 1.5) + mid * 1.3 + lit
+              + hi * 5 * math.max(0, sin(x * 1.3 + yy * 2.1 + T * 8))) * K.ramp(w, th, th + 0.3) * clamp((yl - 3 - yy) / 3, 0, 1)
+            put(l, x, yy + bend, 3, 1)
+            put(l * K.ramp(w, 1, 1.25), x + 3, yy + bend, 1, 1)
           end
         end
       end
@@ -166,7 +176,7 @@ return function(K)
       local yf = math.min(62, yl + reach)
       front[c] = yf
       fronts[c] = yf
-      put(5 + breath * 3.5 + K.bj(c), x, yl, 2, 1)
+      put(4 + breath * 3.5 + K.bj(c), x, yl, 2, 1)
       -- the damp strip the sea always keeps dark-bright just above the line
       if c % 3 ~= 0 then put(1.5 + breath + K.bj(c + 64), x, yl - 2, 2, 1) end
       if wet > 0.02 then put(2 + wet * 3, x, yl - 1, 2, 1) end
@@ -179,16 +189,19 @@ return function(K)
         for yy = floor(yl) + 2 + c % 2, yf - 2, 4 do
           local w = sin(x * 0.15 + yy * 0.5 - T * 1.2 + K.drift_x * 0.1)
             + 0.6 * sin(x * 0.07 - yy * 0.9 + T * 0.5)
-          if w > 0.75 - 0.4 * mid then put(w > 0.95 and 2.5 or 1.5 + mid, x, yy, 2, 1) end
+          local th = 0.75 - 0.4 * mid
+          if w > th then put((1.5 + mid + K.ramp(w, 0.85, 1.05)) * K.ramp(w, th, th + 0.2), x, yy, 2, 1) end
         end
         -- the foam: a lace of broken rows at the front, brighter as it runs
         -- up, thicker with out_mid, glittering with out_hi
-        local up = sin(cyc - x * 0.02) > 0
         local sparkle = hi * 5 * math.max(0, sin(x * 1.7 + T * 9))
+        -- (the lace churns by its light, its pieces in place: no pixel
+        -- hops sideways or switches on)
         local lace = sin(x * 0.9 + T * 2.3 + sin(x * 0.31))
-        put((up and 6 or 4) + sparkle, x + (lace > 0 and 1 or 0), yf, lace > 0.5 and 1 or 2, 1)
-        if lace > -0.3 then put(up and 3 or 2, x, yf - 1 - (lace > 0.4 and 1 or 0), 1, 1) end
-        if mid > 0.15 and lace > 0.6 - mid then put(2 + 2.5 * mid, x, yf - 2 - (lace > 0.8 and 1 or 0), 2, 1) end
+        local upl = 4 + 2 * clamp(sin(cyc - x * 0.02) * 4, 0, 1)
+        put(upl + sparkle - 1 + lace, x, yf, 2, 1)
+        put((upl * 0.5) * K.ramp(lace, -0.5, 0), x + (c % 2), yf - 1, 1, 1)
+        if mid > 0.15 then put((2 + 2.5 * mid) * K.ramp(lace, 0.6 - mid, 0.9 - mid) * K.ramp(mid, 0.15, 0.3), x + ((c + 1) % 2), yf - 2, 1, 1) end
         nf = nf + 1
         foam[nf] = foam[nf] or {}
         foam[nf][1], foam[nf][2] = x, yf
@@ -227,8 +240,11 @@ return function(K)
       local x0, h = g[1], g[2]
       local lean = sin(T * 0.9 + g[3]) * (0.5 + 2 * nat) + K.heave(x0) * 0.4 + K.cur_u * 0.1
       if 63 - h > (sand_top[math.min(63, x0 // 2)] or 99) - 3 then
-        put(2.5 + bloom, x0, 63 - h * 0.5, 1, h * 0.5 + 1)
-        put(2.5 + bloom, x0 + lean, 63 - h, 1, h * 0.5)
+        -- (a blade that arches over as it rises, its tip catching the light)
+        local dir = (g[3] > 3) and 1 or -1
+        put(2.2 + bloom + K.bj(x0 * 3) * 0.4, x0, 63 - h * 0.5, 1, h * 0.5 + 1)
+        put(2.4 + bloom, x0 + lean * 0.5 + dir * 0.5, 63 - h * 0.8, 1, h * 0.3 + 0.5)
+        put(3 + bloom, x0 + lean + dir * 1.5, 63 - h, 1, 1 + h * 0.2)
       end
     end
     -- the notes, each at its pitch
@@ -319,10 +335,20 @@ return function(K)
       else
         -- a branch of driftwood rides the wash up and back, foam round it
         local x = 66 + inc.s * 40
-        local y = fronts[floor(x) // 2] or 50
-        put(6 * e, x - 7, y - 1, 6, 1); put(6.5 * e, x - 2, y - 2, 7, 1); put(5.5 * e, x + 4, y - 3, 3, 1)
-        put(5 * e, x - 4, y - 3, 1, 2); put(5 * e, x + 2, y - 4, 1, 2)
-        put(3.5 * e, x - 9, y + 1, 18, 1)
+        -- (riding the front between columns, so it never hops a row)
+        local c0 = clamp(floor(x) // 2, 0, 62)
+        local fu = x / 2 - c0
+        local y = (fronts[c0] or 50) * (1 - fu) + (fronts[c0 + 1] or fronts[c0] or 50) * fu
+        -- (its light shared between the two rows it lies across, so it
+        -- rises and falls with the wash instead of hopping)
+        local yi = floor(y)
+        local fy = y - yi
+        local function v(l, dx, dy, w, h)
+          put(l * (1 - fy), x + dx, yi + dy, w, h); put(l * fy, x + dx, yi + dy + 1, w, h)
+        end
+        v(6 * e, -7, -1, 6, 1); v(6.5 * e, -2, -2, 7, 1); v(5.5 * e, 4, -3, 3, 1)
+        v(5 * e, -4, -3, 1, 2); v(5 * e, 2, -4, 1, 2)
+        v(3.5 * e, -9, 1, 18, 1)
       end
     end
     K.glitter(sample)

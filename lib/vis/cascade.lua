@@ -41,17 +41,25 @@ return function(K)
     end
   end)
   -- the rock face: brushed strokes, cracks and moss, baked once
+  -- (strata in short strokes, thinned, with upright cracks running
+  -- through them, so the cliff reads as rock and never as more water)
   local rock = K.bake(function(rec)
     local k = 0
     for y = 9, POOL - 1 do
       local x = 0
       while x < 128 do
         k = k + 1
-        local len = 2 + floor(6 * K.hash(k, 503))
-        local d = 0.09 + 0.13 * sin(x * 0.11 + y * 0.37) + 0.12 * sin(x * 0.04 - y * 0.2)
+        local len = 2 + floor(5 * K.hash(k, 503))
+        local d = 0.06 + 0.1 * sin(x * 0.11 + y * 0.37) + 0.09 * sin(x * 0.04 - y * 0.2)
         if K.hash(k, 504) < d then rec(K.hash(k, 505) < 0.15 and 2 or 1, x, y, len, 1) end
         x = x + len + 1 + floor(3 * K.hash(k, 506))
       end
+    end
+    for c = 1, 22 do
+      local x, y = floor(128 * K.hash(c, 516)), 10 + floor((POOL - 16) * K.hash(c, 517))
+      local h = 3 + floor(6 * K.hash(c, 518))
+      rec(1.4, x, y, 1, h)
+      rec(1, x + (K.hash(c, 519) < 0.5 and -1 or 1), y + h, 1, 2)
     end
   end)
   -- a branch reaching out over the pool from the left
@@ -92,7 +100,8 @@ return function(K)
     for x = floor(x0 / 2) * 2, floor(x1) - 1, 2 do
       local c = x * 7 + 3
       -- the sheet's body, then streaks running down it
-      put((1.1 + 0.5 * bright) * a + K.bj(c) * 0.5, x + (x // 2) % 2, y0, 1, h)
+      -- (a continuous sheet, two pixels a column, the streaks bright on it)
+      put((1.3 + 0.5 * bright) * a + K.bj(c) * 0.5, x, y0, 2, h)
       local sp = 0.85 + 0.3 * K.hash(c, 508)
       for q = 0, 1 do
         local yy = y0 + (fall * sp + K.hash(c + q, 509) * h * 3) % h
@@ -148,8 +157,11 @@ return function(K)
         -- the ledge's lip, catching the light, and its shelf into the rock
         local hw = L[2] * (0.8 + 0.2 * a)
         local ll = (2.6 + 0.8 * bloom + 2.5 * K.chord_glow) * a
+        -- (the shelf runs a little into the rock either side, fading: a
+        -- ledge, not the lid of a box)
         put(ll + K.bj(i * 9), L[1] - hw, LY[i], hw * 2, 1)
-        put(ll * 0.55, L[1] - hw - 6, LY[i] + 1, hw * 2 + 12, 1)
+        put(ll * 0.55, L[1] - hw - 2, LY[i] + 1, hw * 2 + 4, 1)
+        put(ll * 0.3, L[1] - hw - 5, LY[i] + 1, 3, 1); put(ll * 0.3, L[1] + hw + 2, LY[i] + 1, 3, 1)
         put(ll * 0.35, L[1] - hw, LY[i] + 2, hw * 2, 1)
         px0, px1, py = L[1] - hw * 0.7 * grow, L[1] + hw * 0.7 * grow, LY[i] + 1
         pa = 1

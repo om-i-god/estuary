@@ -59,9 +59,15 @@ return function(K)
   -- the bridge: parapet and deck, the spandrel wall's concrete, the arch
   -- ring's stones, the piers; baked once
   local bridge = K.bake(function(rec)
-    rec(2.6, 0, DECK, 128, 1)
-    for x = 0, 127, 6 do rec(2, x, DECK - 1, 2, 1) end
-    rec(1.6, 0, DECK + 2, 128, 1)
+    -- (the parapet's coping in weathered pieces, its posts at their own
+    -- spacing: old concrete, not a ruled line)
+    for x = 0, 127, 5 do rec(2.3 + 0.6 * K.hash(x, 1114), x, DECK, math.min(5, 128 - x), 1) end
+    local px = 1
+    while px < 128 do
+      rec(1.8 + 0.4 * K.hash(px, 1115), px, DECK - 1, 2, 1)
+      px = px + 5 + floor(3 * K.hash(px, 1116))
+    end
+    for x = 0, 127, 7 do rec(1.4 + 0.4 * K.hash(x, 1117), x, DECK + 2, math.min(7, 128 - x), 1) end
     local k = 0
     for y = DECK + 3, WL do
       local l, r = opening(y)
@@ -193,8 +199,10 @@ return function(K)
       if L[3] > 0.02 then
         local l = (6.5 + 2.5 * K.chord_glow + 1.2 * breath) * L[3]
         local tw = hi * 3 * math.max(0, sin(T * 4.1 + i * 2))
+        -- (a lantern and its rounded halo, not a lit box)
         put(l + tw, L[1] - 1, L[2], 2, 2)
-        put(l * 0.42, L[1] - 3, L[2] - 1, 6, 4)
+        put(l * 0.42, L[1] - 3, L[2], 6, 2)
+        put(l * 0.32, L[1] - 2, L[2] - 1, 4, 1); put(l * 0.32, L[1] - 2, L[2] + 2, 4, 1)
         for d = 2, 10, 2 do put(l * (0.5 - d * 0.03), L[1] - 1 + sin(T * 1.6 + d + i) * (0.6 + 1.6 * lo), WL + (WL - L[2]) * 0.6 + d * 0.6, 2, 1) end
       end
     end

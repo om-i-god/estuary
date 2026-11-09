@@ -55,6 +55,8 @@ return function(K)
         local u = (k - 1 + 0.15 + 0.7 * K.hash(k, L.seed)) / L.n
         r[k] = {x = -4 + u * 136, h = L.h0 + (L.h1 - L.h0) * K.hash(k, L.seed + 7),
           ph = K.hash(k, L.seed + 9) * 6, head = K.hash(k, L.seed + 11) > (li == 3 and 0.2 or 0.6),
+          -- (each stem has its own set: no two stand quite plumb)
+          bend = (K.hash(k, L.seed + 15) - 0.5) * (li == 1 and 2 or 6),
           foot = li == 1 and (1 + floor(4 * K.hash(k, L.seed + 13))) or (li == 2 and floor(2.5 * K.hash(k, L.seed + 13)) or 0)}
       end
       layers[li] = r
@@ -109,7 +111,7 @@ return function(K)
     local wave = K.sw_disp * 3 * sin(r.x * 0.05 - T * 1.1)
     local midsway = li == 2 and A[K.MID] * 2.2 * sin(T * 1.1 + r.ph * 2) or 0
     local wind = A[K.NAT] * 1.2 * (0.6 + 0.4 * sin(T * 0.5 + r.x * 0.03))
-    local l = (u * 0.3 + sin(T * 0.7 + r.ph) * (0.6 + 1.3 * K.energy) + K.heave(r.x) * 0.3 + wave + wind) * L.sway + midsway
+    local l = (u * 0.3 + sin(T * 0.7 + r.ph) * (0.6 + 1.3 * K.energy) + K.heave(r.x) * 0.3 + wave + wind) * L.sway + midsway + (r.bend or 0)
     local n = nods[key]
     if n then
       local age = T - n
@@ -126,10 +128,13 @@ return function(K)
     local h = r.h
     local seg = L.w == 2 and 2 or 3
     local tx, ty
+    -- (a near reed tapers: two pixels wide low down, one above, and a
+    -- little dimmer toward its top, so it reads as a stem, not a pole)
     for s = 0, h - 1, seg do
       local u = s / h
       local x = r.x + l * u * u
-      put(base_l + K.bj(s * 13 + key), x, WL - r.foot - s - seg, L.w, seg)
+      local w = (L.w == 2 and u > 0.5) and 1 or L.w
+      put((base_l + K.bj(s * 13 + key)) * (1 - 0.22 * u), x + (w < L.w and 0.5 or 0), WL - r.foot - s - seg, w, seg)
       tx, ty = x, WL - r.foot - s - seg
     end
     -- a long blade leaving the near reeds partway up, arching out and over
@@ -138,7 +143,7 @@ return function(K)
       local dir = r.ph > 3 and 1 or -1
       for k = 1, 6 do
         local bx = r.x + l * 0.2 + dir * (k * 1.5 + 0.5) + l * 0.1 * k
-        put(base_l * 0.8, bx, by - k * 1.7 + (k * k) * 0.1, 2, 1)
+        put(base_l * (0.85 - k * 0.06), bx, by - k * 1.7 + (k * k) * 0.32, k < 5 and 2 or 1, 1)
       end
     end
     if r.head and tx then
@@ -205,10 +210,11 @@ return function(K)
         local y = my + dy
         if y < K.at(bank, mx) then put(e * (4.5 + (dy < -3 and 1 or 0)), mx - hw, y, 2 * hw, 1) end
       end
-      -- its halo and its path on the water
-      for dy = -8, 8, 2 do
-        local hw = floor(math.sqrt(math.max(0, 90 - dy * dy)) + 0.5)
-        if my + dy < K.at(bank, mx) then put(e * 1.5, mx - hw, my + dy, 2 * hw, 1) end
+      -- its halo (a soft round glow in hand-made strokes, not stacked
+      -- bars) and its path on the water
+      for dy = -9, 9 do
+        local hw = math.sqrt(math.max(0, 90 - dy * dy))
+        if hw > 1 then K.dither_row(e * 1.1 * (1 - math.abs(dy) / 11), floor(my + dy), bank, floor(mx - hw), floor(mx + hw)) end
       end
       for d = 2, 13, 1 do put(e * (4 - d * 0.2), mx - 3 - d * 0.3 + sin(T * 2 + d) * 2, WL + d, 6 + d * 0.6, 1) end
     end
@@ -216,8 +222,12 @@ return function(K)
     for c = 0, 63 do
       local t = floor(bank[c] + 0.5)
       -- wind running along the far bank's top
+      -- (a gust lifts the top by sharing its light with the row above)
       local gust = nat * 2.2 * math.max(0, sin(c * 0.25 - T * 1.6))
-      put(1 + gust + breath * 1.5, c * 2, t - (gust > 1 and 1 or 0), 2, 1)
+      local up = K.ramp(gust, 0.6, 1.4)
+      local l = 1 + gust + breath * 1.5
+      put(l * (1 - up * 0.6), c * 2, t, 2, 1)
+      put(l * up, c * 2, t - 1, 2, 1)
     end
     -- the water: the glow comes back, broken by the current
     local wl = WL - floor(sw * 2 + 0.5)

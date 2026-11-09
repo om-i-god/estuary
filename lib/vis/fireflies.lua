@@ -48,16 +48,23 @@ return function(K)
   local FAINT = K.scatter(36, 2, 1, 126, 20, 81)
   -- the reeds at the water's edge: their feet stand still (baked), their
   -- tips sway
+  -- (clumps of their own size at their own spacing, some only a stem or
+  -- two: a reed edge, not a repeated stamp)
   local REED_X, REED_H = {}, {}
-  for k = 0, 13 do
-    REED_X[k] = k * 9.3 + 4 * K.hash(k, 74)
-    for j = 0, 2 do REED_H[k * 3 + j] = 3 + 4 * K.hash(k * 3 + j, 75) end
+  do
+    local x = 1
+    for k = 0, 13 do
+      REED_X[k] = x
+      x = x + 5 + 9 * K.hash(k, 76)
+      local n = 1 + floor(3 * K.hash(k, 82))
+      for j = 0, 2 do REED_H[k * 3 + j] = j < n and (2.5 + 5.5 * K.hash(k * 3 + j, 75)) or 0 end
+    end
   end
   local reed_feet = K.bake(function(rec)
     for k = 0, 13 do
       for j = 0, 2 do
         local h = REED_H[k * 3 + j]
-        rec(1, REED_X[k] + j, WL - h * 0.5, 1, math.max(1, h * 0.5))
+        if h > 0 then rec(1, REED_X[k] + j * 1.5, WL - h * 0.5, 1, math.max(1, h * 0.5)) end
       end
     end
   end)
@@ -174,11 +181,14 @@ return function(K)
       local base = K.flow(x, WL) * 0.2 + K.heave(x) * 0.4
       for j = 0, 2 do
         local h = REED_H[k * 3 + j]
-        local lean = base + sin(T * 0.6 + k + j) * (0.5 + 1.5 * mid) + (j - 1)
-        put(1 + mid, x + j + lean, WL - h, 1, h * 0.5)
+        if h > 0 then
+          local lean = base + sin(T * 0.6 + k + j) * (0.5 + 1.5 * mid) + (j - 1)
+          put(1 + mid, x + j * 1.5 + lean, WL - h, 1, h * 0.5)
+        end
       end
     end
-    put(1.5 + bloom, 0, WL, 128, 1)
+    -- (the water's edge: broken strokes of the glow, not a rail)
+    K.streaks(1.5 + bloom, WL, 12, 13, 5)
     -- the water: the glow lies in it below the trees' reflection
     for d = 1, 18 do
       if d % 2 == 0 or d < 3 then
@@ -212,7 +222,8 @@ return function(K)
     if nat > 0.03 then
       for i = 1, #GRASS, 2 do
         local w = sin(T * 3.1 + i * 1.9) * sin(T * 1.7 + i)
-        if w > 0.3 - nat * 0.6 then put(1.5 + 4 * nat * w, GRASS[i], GRASS[i + 1], 2, 1) end
+        local th = 0.3 - nat * 0.6
+        if w > th then put((1.5 + 4 * nat * w) * K.ramp(w, th, th + 0.25), GRASS[i], GRASS[i + 1], 2, 1) end
       end
     end
     -- the chord's swarms: three dim fireflies circling each tone's place
@@ -254,11 +265,11 @@ return function(K)
         table.remove(flies, i)
       elseif lv >= 0.5 then
         -- a soft glow round it, then the light itself
-        if lv > 3.5 then put(lv * 0.28, f.x - 1, f.y - 1, 3, 3) end
-        if lv > 7 then
-          local h = lv * 0.3
-          put(h, f.x - 2, f.y, 5, 1); put(h, f.x, f.y - 2, 1, 5)
-        end
+        -- (the halo and the cross grow with the light: neither switches on)
+        local h1 = (lv - 2) * 0.3
+        if h1 >= 0.5 then put(h1, f.x - 1, f.y - 1, 3, 3) end
+        local h2 = (lv - 5.5) * 0.4
+        if h2 >= 0.5 then put(h2, f.x - 2, f.y, 5, 1); put(h2, f.x, f.y - 2, 1, 5) end
         put(lv, f.x, f.y, 1, 1)
         -- a slow light climbs, trailing a long tail below it
         if f.kind == 3 and lit > 1 then
@@ -270,7 +281,8 @@ return function(K)
         if ry < 63 then
           local rx = f.x + K.heave(f.x + ry) * 0.6 + sin(T * 3 + ry) * 0.6
           put(lv * 0.4, rx, ry, 1, 1)
-          if lv > 4 then put(lv * 0.2, rx - 1, ry + 1, 3, 1) end
+          local h3 = (lv - 2.5) * 0.25
+          if h3 >= 0.5 then put(h3, rx - 1, ry + 1, 3, 1) end
         end
       end
     end
@@ -280,9 +292,13 @@ return function(K)
       local lean = sin(T * 0.7 + c[3]) * (0.6 + 1.6 * mid) + K.heave(x0) * 0.5
       for s = 0, h - 1, 3 do
         local u = s / h
-        put(2, x0 + lean * u * u, 63 - s - 3, 1, 3)
+        put(2 + K.bj(x0 + s) * 0.4, x0 + lean * u * u, 63 - s - 3, 1, 3)
       end
       put(3 + mid * 2 + bloom, x0 + lean - 0.5, 63 - h - 4, 2, 4)
+      put(2, x0 + lean, 63 - h - 6, 1, 2)                 -- its spike
+      -- and a leaf arching away from it
+      local dir = x0 < 64 and 1 or -1
+      for j = 1, 4 do put(1.8, x0 + dir * j + lean * 0.2 * j, 63 - h * 0.5 - j * 1.3 + j * j * 0.25, 1, 1) end
     end
     -- incidents
     local inc = K.inc

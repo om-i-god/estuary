@@ -132,3 +132,13 @@ No engine change. PARAMS > ESTUARY > meter; the sim checks every meter against t
 - Visuals: the bar breath should follow the new bar length within one bar of a change (longest in 5/4, shortest in 7/8).
 - MIDI / crow: with an external sequencer following norns' clock, check that the bar-rate outputs (bloom CV, CCs, the phrase pulse) land on the new barline, and that the clock pulses are unchanged (they are beats).
 - Track mode: a 12-minute track should still last about 12 minutes in every meter (216 bars of 4/4, 172 of 5/4, 288 of 3/4, 246 of 7/8 at 72 bpm), and changing meter mid-track should not move the section or the % on the screen.
+
+## Visuals v6: on-device checks
+Built 2026-11-09 (`docs/superpowers/specs/2026-11-08-estuary-v6-design.md`, part A). Every place had a polish pass from a written audit (`docs/v6-polish-audit.md`), and six new places follow confluence, in this order: delta, onsen, lotus, glacier, pod, wellspring (28 in all; the list only grew at the end, so saved psets keep their theme). New tests: still areas stay still, chord and meter changes never pop, theme-cycle edges ease.
+- Frame time on the Pi for the new places at a busy peak (all ears pinned, a swell, a moment, three motifs). Headless they cost about as much as the busiest of the first 22; wellspring and onsen sit closest to the draw-call budget (about 1050 of 1100). If one drops frames: wellspring's forest-floor and sand stipple, onsen's rocks and steam ribbons.
+- How the polish reads on the real panel: the soft helpers (sliding dashes sharing their light between two pixels, rows sharing between two rows, staggered layers) are tuned on the rasterizer's linear levels. Check at brightness 5 and 15 that nothing that should glide reads as a smear, and that dim textures (level 1 and 2) still read at all.
+- Theme cycle edges: a place now fades out over 0.6 s and in over 0.8 s, its dim texture going a few strokes at a time. Check a cycle every 8 bars feels like a soft change of view, not a slow fade to black.
+- Whether each new place reads at arm's length as itself: the braided channels in delta, the steam and snow caps in onsen, the leaves and flowers in lotus, the ice face and its blue bands in glacier, the spouts along the horizon in pod, the sand-boils in wellspring.
+- The weakest new inputs sit near the 0.03 floor (delta and onsen out_hi, lotus note, wellspring bar): check they read on real material, not only on the sim's fake polls.
+- Lit area: delta, onsen and wellspring's busiest peak frames reach about 34-35% lit; check they still feel calm.
+- The theme name with K1 held: the longest names are now "echo bridge 21/28" and "wellspring 28/28". Check the name stays clear of the screen's right half.

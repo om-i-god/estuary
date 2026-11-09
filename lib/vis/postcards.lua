@@ -21,13 +21,16 @@ return function(K)
 
   M.incidents = {{"cloud", 20}, {"boat", 18}, {"heron", 16}}
 
-  local CARD_W, CARD_H, CARD_Y = 26, 34, 8
+  -- (the windows stand tall enough to use the screen down to the overlay's
+  -- bar, their captions just above it)
+  local CARD_W, CARD_H, CARD_Y = 26, 38, 9
   local SPOT = {0, 37, 74, 111}           -- where along the water each window looks
   local card_wl = {0, 0, 0, 0}
   local cf, cu = {0, 0, 0, 0}, {}
+  local onf = {0, 0, 0, 0}                -- each motif sounding, eased
   local ans = {-99, -99, -99, -99}        -- when each window last answered a note
 
-  function M.clear() cf, cu, ans = {0, 0, 0, 0}, {}, {-99, -99, -99, -99} end
+  function M.clear() cf, cu, ans, onf = {0, 0, 0, 0}, {}, {-99, -99, -99, -99}, {0, 0, 0, 0} end
 
   -- the rocks in the fourth window stand still while the water moves round
   -- them: {centre x, half width, height above the resting water}
@@ -166,6 +169,10 @@ return function(K)
       local x0, y0 = 6 + (i - 1) * 31, CARD_Y
       local m = K.motif(S, i)
       local on = K.sounding(S, i)
+      -- (a window lights up as its motif comes in, and dims as it goes,
+      -- over a second: never a step)
+      onf[i] = K.follow(onf[i], on and 1 or 0, 0.7, K.DT)
+      local of = onf[i]
       -- each window's light eases up and down, and glides to a new pitch
       cf[i] = K.follow(cf[i], K.slot_flash[i], 0.25, K.DT)
       local f, glow = cf[i], K.slot_glow[i]
@@ -175,7 +182,7 @@ return function(K)
       -- the frame
       -- (in short pieces, each rounding its light a little differently, so
       -- the frame brightens a few pieces at a time)
-      local edge = (on and 3 or 2) + f * 3.5 + breath * 1.5
+      local edge = 2 + of + f * 3.5 + breath * 1.5
       K.hline(edge, y0, x0, x0 + CARD_W, 9)
       K.hline(edge, y0 + CARD_H - 1, x0, x0 + CARD_W, 9)
       for yy = y0 + 1, y0 + CARD_H - 2, 8 do
@@ -211,7 +218,10 @@ return function(K)
           local xx = x0 + 1 + c * 3
           if top < wl - 1 and not (rocky and in_rock(xx, top)) then
             put(hl, xx, top, 3, 1)
-            if c % 3 == 1 and wl - 1 - top > 1 then put(hl * 0.4, xx + 1, top + 1, 1, floor(wl) - top - 1) end
+            -- (the hill's body under its ridge: a dim band that thins
+            -- downward, so the far line reads as land, not a fence)
+            if wl - 1 - top > 1 then put(hl * 0.45 + K.bj(c * 3 + i * 11) * 0.3, xx, top + 1, 3, 1) end
+            if wl - 1 - top > 2 and (c + i) % 2 == 0 then put(hl * 0.3, xx + (c % 3 == 0 and 0 or 1), top + 2, 2, 1) end
           end
         end
       end
@@ -230,9 +240,9 @@ return function(K)
         y = clamp(y, y0 + 3, y0 + CARD_H - 3)
         local near = sx and math.max(0, 1 - math.abs(xx - sx) / 6) or 0
         local sparkle = hi * 7.5 * math.max(0, sin(vx * 1.3 + T * 8))
-        if not (rocky and in_rock(xx, y)) then put((on and 3 or 2) + near * lit * 5 + sparkle, xx, y, 2, 1) end
+        if not (rocky and in_rock(xx, y)) then put(2 + of + near * lit * 5 + sparkle, xx, y, 2, 1) end
       end
-      for r = 1, 5 do
+      for r = 1, 7 do
         local yy = floor(wl + 1 + r * 2.5)
         if yy < y0 + CARD_H - 1 then
           local off = (K.drift_x * (0.8 + 0.4 * r) + sp) % 7
@@ -240,8 +250,17 @@ return function(K)
             if not (rocky and (in_rock(xx, yy) or in_rock(xx + 2, yy))) then
               -- whitecaps with out_mid: some dashes lift and brighten
               local cap = mid * math.max(0, sin(xx * 0.9 + r * 2.1 + T * 1.7))
-              local gl = hi * 4.5 * math.max(0, sin(xx * 1.7 + r * 3.3 + T * 9))
-              put((on and 1.5 or 1) + cap * 3.5 + gl, xx, yy - (cap > 0.5 and 1 or 0), 3 + floor(A[K.NAT] * 2.5), 1)
+              local gl = hi * 4.5 * math.max(0, sin(xx * 1.7 + r * 3.3 + T * 5))
+              -- (a cap lifts a row by sharing its light between the two,
+              -- and the water sounds lengthen the dashes a fraction at a
+              -- time: nothing hops)
+              local l = 1 + 0.5 * of + cap * 3.5 + gl
+              local lift = K.ramp(cap, 0.35, 0.65)
+              -- (and never past the window's frame)
+              local ww = math.min(3 + A[K.NAT] * 2.5, x0 + CARD_W - 1 - xx)
+              local wi = floor(ww)
+              K.vshare(l, xx, yy - 1, wi, 1 - lift)
+              put(l * (ww - wi), xx + wi, yy - (lift > 0.5 and 1 or 0), 1, 1)
             end
           end
         end
@@ -277,7 +296,7 @@ return function(K)
       end
       -- caption: where the motif is in its cycle
       local capy = y0 + CARD_H + 3
-      put(on and 2 or 1, x0 + 1, capy, CARD_W - 2, 1)
+      put(1 + of, x0 + 1, capy, CARD_W - 2, 1)
       if on and m then
         local ph = ((step + sub) % m.cycle) / m.cycle
         put(6, x0 + 1 + ph * (CARD_W - 3), capy - 1, 1, 3)

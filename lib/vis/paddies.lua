@@ -94,10 +94,12 @@ return function(K)
     for r = 1, rows do
       local n = 3 + k * 2
       for j = 1, n do
-        local x = (j - 0.5 + 0.35 * (K.hash(j * 9 + r, 905 + k) - 0.5)) / n * 128 + (r % 2) * 64 / n
+        -- (planted by hand: each tuft a little off its row and its own
+        -- height, so the rows read as rice, not a repeated stamp)
+        local x = (j - 0.5 + 0.8 * (K.hash(j * 9 + r, 905 + k) - 0.5)) / n * 128 + (r % 2) * 64 / n
         local top = K.at(BUND[k], x) + 2
-        local y = top + (bottom(k, x) - top - 1) * (r / (rows + 0.6))
-        if y < 63 then RICE[#RICE + 1] = {x, y, 1 + floor(k * 0.7), k, K.hash(j + r * 31, 906 + k) * 6} end
+        local y = top + (bottom(k, x) - top - 1) * (r / (rows + 0.6)) + floor(2 * K.hash(j * 5 + r, 912 + k) - 0.5)
+        if y < 63 then RICE[#RICE + 1] = {x, y, 1 + floor(k * 0.7 + 1.4 * K.hash(j * 7 + r, 913 + k)), k, K.hash(j + r * 31, 906 + k) * 6} end
       end
     end
   end
@@ -192,7 +194,7 @@ return function(K)
           local yb = K.at(B, x)
           local y = yb + 2 + (bottom(k, x) - yb - 4) * ((j * 0.37 + k * 0.21) % 1)
           local w = math.max(0, sin(T * 0.6 + j * 1.3 + k))
-          if w > 0.1 then put(mid * 7 * w + K.bj(j + k * 8) * 0.4, x, y, 4 + k, 1) end
+          if w > 0.1 then put((mid * 7 * w + K.bj(j + k * 8) * 0.4) * K.ramp(w, 0.1, 0.35), x, y, 4 + k, 1) end
         end
       end
     end
@@ -203,9 +205,11 @@ return function(K)
       local l = 2.2 + 0.6 * bloom + r[4] * 0.3 + K.bj(i) * 0.4 + 0.6 * K.energy
       -- (a tuft: blades fanning up and out from one root)
       local g = hi * 4 * math.max(0, sin(T * 3.1 + i * 1.7))
+      -- (alternate tufts lean their tallest blade the other way)
+      local side = (i % 2 == 0) and 1 or -1
       put(l, r[1], r[2] - 1, 1, 2)
-      put(l * 0.85 + g, r[1] - 1 + sway, r[2] - r[3] - 1, 1, r[3])
-      if r[4] >= 3 then put(l * 0.85, r[1] + 1 + sway, r[2] - r[3], 1, r[3] - 1) end
+      put(l * 0.85 + g, r[1] + side + sway, r[2] - r[3] - 1, 1, r[3])
+      if r[4] >= 3 then put(l * 0.85, r[1] - side + sway, r[2] - r[3] + 1, 1, r[3] - 1) end
     end
     K.twinkle(WGLINT, hi, 12)
     -- the water trickling down from terrace to terrace

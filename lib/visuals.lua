@@ -1,5 +1,5 @@
 -- estuary / visuals
--- twenty-two quiet places on the 128x64 OLED, drawn from what the music is doing
+-- twenty-eight quiet places on the 128x64 OLED, drawn from what the music is doing
 -- and from what the engine hears of itself. soft greys, a lot of black,
 -- nothing that flashes the whole screen; the dim levels make the atmosphere
 -- (sky, far shores, mist, water texture) and the brighter ones are kept for
@@ -41,13 +41,17 @@ local VIS = {}
 VIS.names = {"ripples", "horizon", "postcards", "rain", "tide", "drift",
   "reeds", "koi", "kelp", "fireflies", "mist", "flock",
   "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies",
-  "echo bridge", "confluence"}
+  "echo bridge", "confluence",
+  "delta", "onsen", "lotus", "glacier", "pod", "wellspring"}
 
 local FPS = 20
 local TAU = 2 * math.pi
 
 -- state (declared before any function that uses it)
 local B = 1                             -- brightness scale for this frame
+local FJ = 0                            -- while a place fades in or out: a fixed
+                                        -- per-place level jitter, so its dim
+                                        -- texture fades a few rects at a time
 local SP = 1                            -- speed scale (1 at the default 3)
 local T = 0                             -- motion time, s (scaled by speed)
 local NOW = 0                           -- real time since init, s
@@ -178,7 +182,11 @@ for l = 1, 15 do batch[l], bn[l] = {}, 0 end
 local function put(l, x, y, w, h)
   l = l * B
   w, h = w or 1, h or 1
-  if not (l >= 0.5) or x ~= x or y ~= y then return end     -- also drops NaN
+  if x ~= x or y ~= y then return end                        -- NaN
+  if FJ > 0 and l > 0 and x > -1e6 and x < 1e6 and y > -1e6 and y < 1e6 then
+    l = l + FJ * (((x * 7 + y * 13) // 1 & 15) / 16 - 0.47)
+  end
+  if not (l >= 0.5) then return end                          -- also drops NaN
   if not (w >= 1 and h >= 1) then return end                 -- empty / negative sizes
   if l > 14.5 then l = 15 else l = (l + 0.5) // 1 end
   local n = bn[l]
@@ -223,11 +231,40 @@ local function bake(fn)
 end
 
 -- replay a baked layer at `mul` times its levels, slid `dx` px (wrapping
--- round the 128-px width when `wrap`)
-local function blit(L, mul, dx, wrap)
+-- round the 128-px width when `wrap`). `soft`: a layer sliding slowly
+-- moves on a few rects at a time, each its own share of the way between
+-- the whole-pixel places either side of dx, so it glides instead of the
+-- whole layer hopping a pixel in one frame (same number of rects)
+local function blit(L, mul, dx, wrap, soft)
   mul = (mul or 1) * B
-  dx = math.floor(dx or 0)
+  dx = dx or 0
+  local fr = 0
+  if soft then fr = dx - math.floor(dx) end
+  dx = math.floor(dx)
   if wrap then dx = dx % 128 end
+  local q = 0
+  if FJ > 0 then
+    -- (fading: each rect rounds its own way, through put)
+    local b0 = B
+    B = 1
+    for gi = 1, #L do
+      local g = L[gi]
+      local l = g.lv * mul
+      for i = 1, g.n, 4 do
+        local x = g[i] + dx
+        -- (keeping the soft slide's stagger while it fades)
+        if fr > 0 then
+          q = q + 1
+          if (((q * 2654435761) >> 8) & 255) / 256 < fr then x = x + 1 end
+        end
+        if wrap and x >= 128 then x = x - 128 end
+        put(l, x, g[i + 1], g[i + 2], g[i + 3])
+        if wrap and x + g[i + 2] > 128 then put(l, x - 128, g[i + 1], g[i + 2], g[i + 3]) end
+      end
+    end
+    B = b0
+    return
+  end
   for gi = 1, #L do
     local g = L[gi]
     local l = g.lv * mul
@@ -237,6 +274,10 @@ local function blit(L, mul, dx, wrap)
       local b, n = batch[l], bn[l]
       for i = 1, g.n, 4 do
         local x, w = g[i] + dx, g[i + 2]
+        if fr > 0 then
+          q = q + 1
+          if (((q * 2654435761) >> 8) & 255) / 256 < fr then x = x + 1 end
+        end
         if wrap and x >= 128 then x = x - 128 end
         b[n + 1], b[n + 2], b[n + 3], b[n + 4] = x, g[i + 1], w, g[i + 3]
         n = n + 4
@@ -246,6 +287,10 @@ local function blit(L, mul, dx, wrap)
         end
       end
       bn[l] = n
+    elseif fr > 0 then
+      -- (a group too dim to draw still takes its turns, so the stagger
+      -- never re-deals when it brightens)
+      q = q + g.n // 4
     end
   end
 end
@@ -462,10 +507,15 @@ end
 
 -- the faint moving surface: short dashes on staggered rows that ride the
 -- current (nearer rows faster) and the heave. a dash shows where two slow
--- waves agree, so the pattern breathes rather than scrolls
-local function surface(x0, y0, x1, y1, lvl, gap, dy, wlen)
+-- waves agree, so the pattern breathes rather than scrolls. `dens` (0..1,
+-- optional) lets more of the dashes show: the rows and their spacing never
+-- move with it, so a rising input thickens the surface rather than
+-- re-laying it. each dash fades in and out with the waves (never a switch,
+-- so a still surface never sparkles), and is twice as bright on a crest
+local function surface(x0, y0, x1, y1, lvl, gap, dy, wlen, dens)
   local row = 0
   wlen = wlen or 2
+  local thr = 0.35 - 0.8 * (dens or 0)
   for y = y0, y1 - 1, dy do
     local par = 0.6 + 0.8 * (y / 64)
     local o = drift_x * par + row * gap * 0.5
@@ -477,11 +527,66 @@ local function surface(x0, y0, x1, y1, lvl, gap, dy, wlen)
     if k ~= k or k > 1e9 or k < -1e9 then k = 0 end
     for x = x0 + off, x1 - 1, gap do
       local w = sin(x * 0.11 + y * 0.6 - T * 0.8) + 0.7 * sin(x * 0.043 - y * 0.27 + T * 0.37)
-      if w > 0.35 then put(lvl * (w > 1.2 and 2 or 1) + (((k * 2654435761) >> 9) & 7) / 8 - 0.44, x, y + heave(x) * 0.5, wlen, 1) end
+      if w > thr then
+        local f = (w - thr) / 0.5
+        if f > 1 then f = 1 else f = f * f * (3 - 2 * f) end
+        local up = (w - 1) / 0.5
+        if up < 0 then up = 0 elseif up > 1 then up = 1 end
+        put((lvl * (1 + up) + (((k * 2654435761) >> 9) & 7) / 8 - 0.44) * f, x, y + heave(x) * 0.5, wlen, 1)
+      end
       k = k + 1
     end
     row = row + 1
   end
+end
+
+-- a soft threshold: 0 below a, 1 above b, eased between (for anything that
+-- would otherwise switch on as an input crosses a line)
+local function ramp(v, a, b)
+  local u = (v - a) / (b - a)
+  if u <= 0 then return 0 elseif u >= 1 then return 1 end
+  return u * u * (3 - 2 * u)
+end
+
+-- a dash at a fractional x: its end pixels take a share of the light, so a
+-- slowly sliding dash glides instead of hopping a whole pixel at a time
+local function dash(l, x, y, w, h)
+  if not (x > -1e6 and x < 1e6) then return end
+  w, h = w or 1, h or 1
+  local xi = x // 1
+  local f = x - xi
+  if f < 0.12 then put(l, xi, y, w, h); return end
+  if f > 0.88 then put(l, xi + 1, y, w, h); return end
+  put(l * (1 - f), xi, y, 1, h)
+  if w > 1 then put(l, xi + 1, y, w - 1, h) end
+  put(l * f, xi + w, y, 1, h)
+end
+
+-- a row's light shared with the row below by f (0..1): one rect while it
+-- sits on a row, two only while it is between them
+local function vshare(l, x, y, w, f)
+  if f < 0.06 then put(l, x, y, w, 1)
+  elseif f > 0.94 then put(l, x, y + 1, w, 1)
+  else put(l * (1 - f), x, y, w, 1); put(l * f, x, y + 1, w, 1) end
+end
+
+-- a soft point at a fractional place: its light shared between the pixels
+-- it lies across, so a slowly drifting point never hops
+local function dot(l, x, y)
+  if not (x > -1e6 and x < 1e6 and y > -1e6 and y < 1e6) then return end
+  local xi, yi = x // 1, y // 1
+  local fx, fy = x - xi, y - yi
+  local a, b = l * (1 - fx), l * fx
+  put(a * (1 - fy), xi, yi, 1, 1); put(b * (1 - fy), xi + 1, yi, 1, 1)
+  if fy > 0.12 then put(a * fy, xi, yi + 1, 1, 1); put(b * fy, xi + 1, yi + 1, 1, 1) end
+end
+
+-- how far inside the screen's sides x is, eased over m px (1 well inside,
+-- 0 at the edge and beyond): for anything that wraps round
+local function edge(x, m)
+  m = m or 8
+  local d = x < 64 and x + 1 or 128 - x
+  return ramp(d, 0, m)
 end
 
 -- glitter: out_hi spawns short-lived points where `sample(u, v)` says the
@@ -503,7 +608,9 @@ local function glitter(sample, rate)
     elseif u > 0 then
       local lv = g.pk * math.sin(math.pi * u)
       put(lv, g.x, g.y, 1, 1)
-      if lv > 4 then put(lv * 0.35, g.x - 1, g.y, 1, 1); put(lv * 0.35, g.x + 1, g.y, 1, 1) end
+      -- (its halo grows with it: nothing switches on as it brightens)
+      local hl = (lv - 2.5) * 0.4
+      if hl >= 0.5 then put(hl, g.x - 1, g.y, 1, 1); put(hl, g.x + 1, g.y, 1, 1) end
     end
   end
 end
@@ -669,6 +776,7 @@ K.put, K.profile, K.mass, K.row_above, K.gradient, K.dashes = put, profile, mass
 K.streaks, K.at, K.crowns = streaks, at, crowns
 K.bake, K.blit, K.dither_row = bake, blit, dither_row
 K.flow, K.heave, K.surface, K.glitter = flow, heave, surface, glitter
+K.ramp, K.dash, K.dot, K.edge, K.vshare = ramp, dash, dot, edge, vshare
 K.substep, K.sounding, K.motif, K.phase, K.chord = substep, sounding, motif, phase, chord
 K.echo = function() return clamp(opt("echo_fb", 0.45), 0, 0.85), opt("echo_div", 3) end
 
@@ -752,7 +860,8 @@ function K.twinkle(pts, amt, lv)
   local t = T * 2.3
   for i = 1, #pts, 2 do
     local w = sin(t + i * 1.37) * sin(t * 0.61 + i * 0.71)
-    if w > 0.2 then put(lv * w, pts[i], pts[i + 1], 2, 1) end
+    -- (rising from nothing as the phase comes round: never a switch)
+    if w > 0.2 then put(lv * (w - 0.2) * 1.25, pts[i], pts[i + 1], 2, 1) end
   end
 end
 
@@ -904,17 +1013,20 @@ function VIS.draw(i, S, dt)
   -- a theme switch: the old picture eases to black, the new one eases up
   if cur == nil then cur = i end
   if i ~= cur then
-    xf = xf - DT / 0.45
+    xf = xf - DT / 0.6
     if xf <= 0 then
       clear_theme(cur)
       for k = #glints, 1, -1 do glints[k] = nil end
       xf, cur = 0, i
     end
   else
-    xf = math.min(1, xf + DT / 0.6)
+    -- (the new place comes up a little slower than the old one went:
+    -- even the busiest scene never brightens by much in one frame)
+    xf = math.min(1, xf + DT / 0.8)
   end
   incidents(THEMES[cur])
   B = opt("vis_brightness", 10) / 10 * ease(xf)
+  FJ = xf < 1 and 0.9 * (1 - ease(xf)) or 0
   sync(S)
   THEMES[cur].draw(S)
   flush()
