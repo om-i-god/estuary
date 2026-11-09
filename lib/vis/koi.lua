@@ -24,6 +24,7 @@ return function(K)
   local stone_body, stone_edge
   local GLINTS = K.scatter(72, 4, 7, 124, 57, 63)
   local rings, flick, pads, stones, petals
+  local onf = {0, 0, 0, 0}                -- each motif sounding, eased
 
   function M.init()
     rings, flick, petals = {}, {0, 0, 0, 0}, {}
@@ -65,7 +66,7 @@ return function(K)
     end)
   end
 
-  function M.clear() rings, petals = {}, {}; flick = {0, 0, 0, 0} end
+  function M.clear() rings, petals = {}, {}; flick = {0, 0, 0, 0}; onf = {0, 0, 0, 0} end
 
   -- the gravel bed, baked once: a sparse dim stipple, a sunken stone
   local bed = K.bake(function(rec)
@@ -101,18 +102,27 @@ return function(K)
 
   local function sample(u, v) return 4 + u * 120, 7 + v * 50 end
 
-  -- a lily pad from above: a disc with a notch toward its stem, a lit rim
-  local function pad(x, y, r, l, rim)
+  -- a lily pad from above: a disc with a thin slit running from its middle
+  -- out to the rim (on a slant, its own way round: a leaf, not a mouth),
+  -- a lit rim
+  local function pad(x, y, r, l, rim, dir)
     if r < 1 then return end
     local rows = floor(r * 0.8)
     for dy = -rows, rows do
       local hw = math.sqrt(math.max(0, r * r - (dy / 0.8) ^ 2))
-      if dy == 0 then
-        put(l, x - hw, y, hw * 1.25, 1)            -- the notch: a slit to the rim
-      elseif math.abs(dy) == rows then
-        put(l + rim, x - hw, y + dy, 2 * hw + 1, 1)
+      local ll = math.abs(dy) == rows and l + rim or l
+      local a, b = x - hw, x + hw + 1
+      if dy <= 0 and dy > -rows then
+        -- (the slit crosses this row one pixel wide)
+        local sx = floor(x - dir * dy * 1.3 + (dir > 0 and 0.5 or -0.5))
+        if sx > a and sx < b - 1 then
+          put(ll, a, y + dy, sx - a, 1)
+          put(ll, sx + 1, y + dy, b - sx - 1, 1)
+        else
+          put(ll, a, y + dy, b - a, 1)
+        end
       else
-        put(l, x - hw, y + dy, 2 * hw + 1, 1)
+        put(ll, a, y + dy, b - a, 1)
       end
     end
   end
@@ -127,14 +137,17 @@ return function(K)
     K.blit(stone_edge, (1 + 0.3 * bloom + 0.7 * breath) * (1 - 0.4 * clamp((sw - 0.3) / 0.7, 0, 1)))
     -- the water: sky light moving faintly on it, breathing on the bar; out_lo
     -- rolls broad slow bands of light across
-    K.surface(0, 6, 128, 58, 1 + breath * 2.6 + 0.3 * bloom + nat * 1.2, 15 - floor(nat * 4), 6, 3)
-    K.twinkle(GLINTS, hi, 8.5)
+    K.surface(0, 6, 128, 58, 1 + breath * 2.6 + 0.3 * bloom + nat * 1.2, 14, 6, 3, nat * 0.5)
+    K.twinkle(GLINTS, hi, 10.5)
     if lo > 0.05 then
       for b = 0, 1 do
         local bx = (T * 6 + b * 64 + K.drift_x * 0.3) % 170 - 20
+        -- (each row's stroke its own length and place: a soft band of
+        -- light, not a ruled stack)
         for y = 8, 56, 4 do
-          local x = bx + sin(y * 0.15 + T * 0.3) * 6
-          put(lo * 2.2, x, y, 14, 1)
+          local h = K.hash(y + b * 64, 64)
+          local x = bx + sin(y * 0.15 + T * 0.3) * 6 + (h - 0.5) * 6
+          put(lo * 2.2 * (0.8 + 0.4 * h), x, y + (b + y // 4) % 2, 9 + 9 * K.hash(y + b * 64, 65), 1)
         end
       end
     end
@@ -170,7 +183,7 @@ return function(K)
       p.y = clamp(p.y + v * DTS * 0.3, 12, 50)
       local rock = lo * 1.5 * sin(T * 0.9 + p.ph)
       local qx, qy = p.x + rock, p.y + lo * sin(T * 0.7 + p.ph)
-      pad(qx, qy, p.r, 2 + 0.8 * bloom + 1.2 * K.chord_glow, 1)
+      pad(qx, qy, p.r, 2 + 0.8 * bloom + 1.2 * K.chord_glow, 1, i % 2 == 0 and 1 or -1)
       put(2 + 7 * hi * math.max(0, sin(T * 5 + i * 2)), qx - p.r * 0.7, qy - p.r * 0.6, 3, 1)   -- light on its rim
       local fl = ease((bloom - 0.3) / 0.25)                      -- a flower as the bloom opens
       if i == 1 and p.r > 3 and fl > 0.02 then put((4 + 3 * bloom) * fl, qx - 1, qy - 1, 2, 2) end
@@ -200,22 +213,26 @@ return function(K)
       flick[i] = flick[i] * math.exp(-K.DT / 0.5)
       local m = K.motif(S, i)
       if m then
-        local on = K.sounding(S, i)
+        -- (a fish rises and brightens as its motif comes in, and sinks
+        -- as it goes, over a second)
+        onf[i] = K.follow(onf[i], K.sounding(S, i) and 1 or 0, 0.7, K.DT)
+        local on = onf[i]
         local th = ((step + sub) % (m.cycle * 4)) / (m.cycle * 4) * K.TAU
         local d = 0.034
-        local lv = on and (6.5 + 3.5 * K.slot_flash[i]) or (2.5 + 3 * K.slot_flash[i])
-        local sw_ = (on and 1 or 0.6) * (0.5 + 1.5 * flick[i] + 0.6 * K.energy)
+        local lv = 2.5 + 4 * on + (3 + 0.5 * on) * K.slot_flash[i]
+        local sw_ = (0.6 + 0.4 * on) * (0.5 + 1.5 * flick[i] + 0.6 * K.energy)
         local px_, py_ = path(i, th)
         fish_xy[i] = fish_xy[i] or {}
         fish_xy[i][1], fish_xy[i][2] = px_, py_
         -- the wake: two fading lines opening behind it, longer with out_mid
-        local wl = 22 + floor(mid * 22)
-        for k = 13, wl, 3 do
+        -- (the wake lengthens smoothly: its far end fades with the mid)
+        local wl = 22 + mid * 22
+        for k = 13, wl + 3, 3 do
           local wx, wy = path(i, th - k * d)
           local sx, sy = path(i, th - k * d - 0.01)
           local nx, ny = wy - sy, sx - wx
           local nn = math.max(1e-6, math.sqrt(nx * nx + ny * ny))
-          local l = (on and 1.8 or 0.9) * (1 - (k - 13) / (wl - 10)) * (1 + 2.8 * mid) + hi * 1.5
+          local l = ((0.9 + 0.9 * on) * (1 + 2.8 * mid) * math.max(0, 1 - (k - 13) / (wl - 10)) + hi * 1.5) * clamp((wl + 3 - k) / 3, 0, 1)
           local o = 1 + (k - 13) * 0.3
           put(l, wx + nx / nn * o, wy + ny / nn * o, 1, 1)
           put(l, wx - nx / nn * o, wy - ny / nn * o, 1, 1)

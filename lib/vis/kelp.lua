@@ -42,10 +42,15 @@ return function(K)
     for k = 1, 7 do
       local x = 4 + (k - 1) * 18 + 8 * K.hash(k, 69)
       local h = 22 + 16 * K.hash(k, 70)
+      -- (blades stream up and out from the stalk, never straight across)
       for s = 0, h, 3 do
         local xx = x + 2 * sin(s * 0.09 + k)
         rec(1, xx, FLOOR - 2 - s, 1, 3)
-        if s % 6 == 3 then rec(1, xx + ((s // 6) % 2 == 0 and 1 or -3), FLOOR - 3 - s, 3, 1) end
+        if s % 6 == 3 then
+          local side = (s // 6) % 2 == 0 and 1 or -1
+          rec(1, xx + (side > 0 and 1 or -2), FLOOR - 3 - s, 2, 1)
+          rec(1, xx + (side > 0 and 3 or -3), FLOOR - 4 - s, 1, 1)
+        end
       end
     end
   end)
@@ -57,7 +62,8 @@ return function(K)
     local n = 7
     for k = 1, n do
       local x = 8 + (k - 1) * 18 + 8 * K.hash(k, 62)
-      fronds[k] = {x = x, h = 30 + 18 * K.hash(k, 63), ph = K.hash(k, 64) * 6, near = K.hash(k, 65) > 0.5}
+      fronds[k] = {x = x, h = 30 + 18 * K.hash(k, 63), ph = K.hash(k, 64) * 6, near = K.hash(k, 65) > 0.5,
+        bend = (K.hash(k, 73) - 0.5) * 9}
     end
     for k = 1, 12 do
       school[k] = {a = k * 0.5, r = 6 + 4 * K.hash(k, 66), dy = (K.hash(k, 67) - 0.5) * 6}
@@ -100,7 +106,8 @@ return function(K)
     local T = K.T
     local u = s / f.h
     local push = K.flow(f.x, FLOOR - s) * 0.5 + K.heave(f.x - s * 0.5) * (1 + 1.5 * A[K.LO]) - K.sw_disp * 7
-    return f.x + (push + sin(T * 0.5 + f.ph + s * 0.08) * 2.5) * u * u
+    -- (each stalk has its own curve, so the forest never stands ruled)
+    return f.x + (push + sin(T * 0.5 + f.ph + s * 0.08) * 2.5 + f.bend) * u * u
   end
 
   local function sample(u, v) return u * 127, SURF + 1 + v * 3 end
@@ -120,7 +127,13 @@ return function(K)
     -- the surface seen from below: a bright wavering skin
     for x = 0, 126, 2 do
       local w = sin(x * 0.12 - T * 1.2 + K.drift_x * 0.05) + 0.6 * sin(x * 0.31 + T * 0.7)
-      put(2.5 + bloom + breath * 3 + K.bj(x) + (w > 0.6 and 1.5 or 0) + hi * 4 * math.max(0, sin(x * 1.3 + T * 5)), x, SURF + (w > 0 and 0 or 1) + K.heave(x) * 0.25, 2, 1)
+      -- (a crest brightens by a ramp, and the skin dips by sharing its
+      -- light between two rows: nothing hops)
+      local l = 2.5 + bloom + breath * 3 + K.bj(x) + 1.5 * K.ramp(w, 0.4, 0.8) + hi * 4 * math.max(0, sin(x * 1.3 + T * 5))
+      local dip = K.ramp(-w, -0.3, 0.3)
+      local yy = floor(SURF + K.heave(x) * 0.25 + 0.5)
+      put(l * (1 - dip * 0.7), x, yy, 2, 1)
+      put(l * dip, x, yy + 1, 2, 1)
     end
     -- the chord's shafts of light down from the surface, shimmering with
     -- out_hi
@@ -144,23 +157,28 @@ return function(K)
       for i = 1, #MOTES, 2 do
         local x = (MOTES[i] + K.drift_x * 0.4 + T * 1.5) % 128
         local y = MOTES[i + 1] + sin(T * 0.4 + i) * 3
-        if (i // 2) % 10 < nat * 10 then put(2.5 + 3 * nat, x, y, 2, 1) end
+        -- (each mote fades in as the water sounds reach it)
+        local f = clamp(nat * 10 - (i // 2) % 10, 0, 1)
+        if f > 0 then put((2.5 + 3 * nat) * f, x, y, 2, 1) end
       end
     end
     -- the school: small fish turning slowly together, wider and brighter
     -- with out_mid
     local cx = 64 + 30 * sin(T * 0.045) + K.cur_u * 2
     local cy = 26 + 6 * sin(T * 0.07)
-    local ns = 6 + floor(mid * 6 + 0.5)
-    for k = 1, ns do
+    -- (the newest fish fades in as the mid rises)
+    local nsf = 6 + mid * 6
+    for k = 1, math.min(12, floor(nsf) + 1) do
       local f = school[k]
       f.a = f.a + DTS * (0.5 + 0.4 * K.energy)
       local spread = 1.6 + 0.8 * mid
       local x = cx + cos(f.a) * f.r * spread
       local y = cy + sin(f.a) * f.r * 0.5 * (1 + 0.5 * mid) + f.dy
       local dir = -sin(f.a) >= 0 and 1 or -1
-      put(2.5 + bloom + 3.2 * mid, x, y, 2 + floor(mid * 1.5), 1)
-      put(1.5 + 1.5 * mid, x - dir, y, 1, 1)
+      local fe = clamp(nsf - k + 1, 0, 1)
+      put((2.5 + bloom + 3.2 * mid) * fe, x, y, 2, 1)
+      put((1.5 + 1.5 * mid) * fe, x - dir, y, 1, 1)
+      put((1.5 + 3 * mid) * fe * K.ramp(mid, 0.2, 0.7), x + (dir > 0 and 2 or -1), y, 1, 1)
     end
     -- the fronds: a stalk with blades along it, near ones brighter and wider
     for k, f in ipairs(fronds) do
@@ -184,11 +202,14 @@ return function(K)
           -- the current turns them all the same way
           local side = (s % 8 == 2) and 1 or -1
           if K.cur_u > 1.2 then side = 1 elseif K.cur_u < -1.2 then side = -1 end
-          local fl = sin(T * (1.6 + 0 * A[K.AMP]) + s * 0.4 + f.ph) * (1 + 1.2 * A[K.AMP])
-          local len = 3 + (f.near and 2 or 1) + fl
-          local bx = side > 0 and x + w or x - len
-          put(lv * 0.75 + run * 0.6, bx, y - 2, len, 1)
-          if f.near then put(lv * 0.5, bx + side * 2, y - 3 - (fl > 0 and 1 or 0), len - 2, 1) end
+          -- (a blade streams up and out in steps, its tip fluttering)
+          local fl = sin(T * 1.6 + s * 0.4 + f.ph) * (1 + 1.2 * A[K.AMP])
+          local steps = f.near and 2 or 1
+          local bx = side > 0 and x + w or x - 2
+          for j = 0, steps - 1 do
+            local tip = j == steps - 1 and fl * 0.8 or 0
+            put((lv * 0.75 + run * 0.6) * (1 - j * 0.15), bx + side * (j * 2 + tip), y - 2 - j - (f.near and 0 or 1), j == steps - 1 and 3 or 2, 1)
+          end
         end
       end
       -- a float at the tip

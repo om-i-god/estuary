@@ -102,6 +102,9 @@ return function(K)
     local v = y < 37 and ((y - 29) / 8) ^ 2 * (0.55 + 0.2 * F_bloom) or 0.4 + F_pale * ((y - 37) / 16) ^ 1.5
     return v + F_breath * 1.6 * clamp((y - 36) / 14, 0, 1)
   end
+  -- the rain haze between the low cloud and the far trees
+  -- (a squall's cloud and rain swallow it)
+  local function haze(y) return 0.5 * (1 - 0.85 * K.sw_disp) * ((y - 15) / 13) ^ 1.5 end
   local function keep_far(x) return GROUND - F_d * 1.4 < K.at(far, x) end
 
   -- the chord's clouds: tone i -> x, y, presence
@@ -114,22 +117,23 @@ return function(K)
     -- the pale rainy sky low down, behind the trees
     local pale = 1.2 + 1.3 * bloom
     F_pale, F_bloom, F_breath = pale, bloom, breath
+    K.gradient(16, 27, haze, far)
     K.gradient(28, GROUND - 1, rain_sky, far)
     -- the far rain: curtains of strokes in the distance, as many as the
     -- water sounds bring
     curtain_x = curtain_x - DTS * (1.2 + 3 * sw)
-    if nat > 0.05 then K.blit(curtain, 0.5 + 1.3 * nat, K.drift_x * 0.1 + curtain_x, true) end
+    -- (soft: the slanted strokes glide rather than hop a pixel at once)
+    if nat > 0.05 then K.blit(curtain, 0.5 + 1.3 * nat, K.drift_x * 0.1 + curtain_x, true, true) end
     -- the low cloud: banks of soft strokes drifting over, thicker with
     -- out_mid; the chord's four heavier clouds among them
     cloud_x = cloud_x + DTS * (0.6 + mid)
+    -- (in hand-made strokes whose lengths and places wander, fixed to
+    -- each stroke as it drifts: soft cloud, not ruled rows)
     for r = 0, 3 do
       local y = 2 + r * 4 + (r % 2)
       local off = K.drift_x * (0.5 + r * 0.15) + r * 23 + cloud_x
-      for x = (off % 40) - 40, 127, 40 do
-        local w = 12 + 8 * sin(x * 0.07 + r + T * 0.05) + 9 * mid
-        put(1 + 0.8 * mid, x, y, w, 1)
-        if r % 2 == 0 and w > 9 then put(1 + mid, x + 4, y + 1, w - 8, 1) end
-      end
+      K.streaks(1 + 0.8 * mid, y, 16 + 9 * mid, 34 + r * 5, off)
+      if r % 2 == 0 then K.streaks(0.9 + mid, y + 1, 9 + 6 * mid, 34 + r * 5, off + 4) end
     end
     for i = 1, 4 do
       local m, p = K.chord_at(i)
@@ -144,39 +148,49 @@ return function(K)
           local hw = ({5, 8, 10, 9})[r + 3] * (1 + 0.3 * mid)
           local y = c[2] + r
           local x0 = c[1] - hw + (K.hash(i * 7 + r, 44) - 0.5) * 3
-          put(l, x0, y, hw * 2, 1)
-          if r == -2 then put(l + 1.2, x0 + 1, y, hw * 1.2, 1) end
+          -- (in short pieces, each rounding its light its own way, so a
+          -- chord's glow brightens the cloud a few pieces at a time)
+          K.hline(l, y, floor(x0), floor(x0 + hw * 2), 5)
+          if r == -2 then K.hline(l + 1.2, y, floor(x0 + 1), floor(x0 + 1 + hw * 1.2), 4) end
           if r == -1 then put(l + 0.8, x0, y, 3, 1) end
         end
         -- its rain: a few dim strokes falling under it
+        -- (each stroke fades in under the cloud and out as it falls, so
+        -- it never jumps back up to the top)
         for k = 0, 3 do
-          local x = c[1] - 8 + k * 5 + ((T * 6 + k * 3) % 5)
-          put(1 * p + nat, x, c[2] + 4 + ((T * 9 + k * 7) % 12), 1, 3)
+          local ph = ((T * 0.5 + k * 0.29) % 1)
+          local x = c[1] - 8 + k * 5 + ((T * 4 + k * 3) % 5)
+          put((1 * p + nat) * sin(math.pi * ph) * 1.2, x, c[2] + 4 + ph * 12, 1, 3)
         end
       end
     end
     -- the near bank: dim grass, tufts leaning with the wind
     K.blit(grass, 1 + 0.5 * bloom)
+    -- (tufts of their own heights at their own places along the crest,
+    -- not a comb)
     for c = 46, 63 do
       local t = bank[c]
-      if t < GROUND then
+      if t < GROUND and K.hash(c, 45) < 0.7 then
         local lean = clamp(wind(c * 2, t) * 0.4 + (nat * 1.2 + A[K.AMP] * 0.8) * sin(T * 2 + c), -2, 2)
-        put(2 + bloom, c * 2 + lean, t - 1 - (c % 3), 1, 2 + (c % 3))
+        local h = 1 + floor(4 * K.hash(c, 46))
+        put(2 + bloom + K.bj(c) * 0.4, c * 2 + floor(2 * K.hash(c, 47)) + lean, t - h + 1, 1, h)
       end
     end
     -- mist over the water, deeper with out_lo, brightening on the bar
+    -- (its top row fades in as it deepens: no row arrives at once)
     local mh = 2 + 5 * lo + 2 * sw
-    for k = 0, floor(mh) do
+    for k = 0, floor(mh) + 1 do
       local y = GROUND - 2 - k - floor(sw * 2)
       local d = 1 - k / (mh + 1)
-      K.streaks(1 + d * 0.8 + breath * 1.6 * d, y, 5 + k * 1.5, 22 + k * 4, K.drift_x * 0.8 + k * 9 + T * (1 + k * 0.1))
+      local top = clamp(mh + 1 - k, 0, 1)
+      K.streaks((1 + d * 0.8 + breath * 1.6 * d) * top, y, 5 + k * 1.5, 22 + k * 4, K.drift_x * 0.8 + k * 9 + T * (1 + k * 0.1))
     end
     -- the water: a surface line, crests brighter, the trees' dark reflection
     -- with the pale sky's between
     for x = 0, 126, 2 do
       if x < 92 or bank_y(x) > GROUND + 1 then
         local y = surf_y(x)
-        put(2 + (sin(x * 0.27 - T * 1.3 + K.drift_x * 0.05) > 0.6 and 1 or 0) + breath * 2, x, y, 2, 1)
+        put(2 + K.ramp(sin(x * 0.27 - T * 1.3 + K.drift_x * 0.05), 0.4, 0.8) + breath * 2, x, y, 2, 1)
       end
     end
     for d = 2, 9, 2 do

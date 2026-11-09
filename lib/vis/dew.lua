@@ -65,12 +65,20 @@ return function(K)
     for d = 2, s[3], 2.5 do SPTS[#SPTS + 1], SPTS[#SPTS + 2], SPTS[#SPTS + 3] = d / R, s[1] * d, s[2] * d * 0.92 end
   end
   -- the far reed bed along the bottom, and the far mist, baked once
+  -- (stems in loose clumps at their own places, leaning their own ways
+  -- and tapering dim at the top: a reed bed, not a comb)
   local bed = K.bake(function(rec)
-    for k = 1, 46 do
-      local x = floor(k * 2.8 + 2 * K.hash(k, 404))
+    local x = 0
+    for k = 1, 60 do
+      x = x + 1 + 5 * K.hash(k, 404) ^ 2
+      if x > 127 then break end
       local h = 4 + floor(9 * K.hash(k, 405))
-      rec(1 + 0.6 * K.hash(k, 406), x, 64 - h, 1, h)
-      if K.hash(k, 407) < 0.3 then rec(1.4, x, 62 - h, 1, 2) end
+      local l = 1 + 0.6 * K.hash(k, 406)
+      local lean = K.hash(k, 413) < 0.5 and -1 or 1
+      local lower = floor(h * (0.45 + 0.3 * K.hash(k, 414)))
+      rec(l, x, 64 - lower, 1, lower)
+      rec(l * 0.8, x + (K.hash(k, 415) < 0.6 and lean or 0), 64 - h, 1, h - lower)
+      if K.hash(k, 407) < 0.3 then rec(1.5, x + lean, 62 - h, 1, 2) end
     end
   end)
   -- the near reeds' leaves: {reed x, y, dir, length}
@@ -116,10 +124,12 @@ return function(K)
   local function sky(y) local d = (F_sun - y) / 30; return F_glow * math.max(0, 1 - abs(d)) ^ 1.6 end
 
   -- a reed: a tall stem bending with the breeze, its leaves
+  -- (each with its own slight set, so neither stands like a post)
   local function reed(x, lean, lv)
+    local set = x < 64 and 2.5 or -2
     for y = 0, 63, 3 do
       local u = 1 - y / 64
-      put(lv + K.bj(x + y), x + lean * u * u, y, 2, 3)
+      put(lv + K.bj(x + y), x + (lean + set) * u * u, y, 2, 3)
     end
   end
 
@@ -136,15 +146,20 @@ return function(K)
     F_sun = 62 - 22 * bloom
     F_glow = 0.55 + 0.45 * bloom + 1.1 * breath + 0.3 * K.chord_glow
     -- (round the sun: each row's glow narrows and fades away from it)
+    -- (in five zones a row, falling off smoothly from the sun's column:
+    -- a round glow, not a stepped plate)
     for y = floor(F_sun - 26), 63 do
       local dy = abs(y - F_sun)
       local v = sky(y) * 0.65
       if v > 0.05 then
         local hw = 58 - dy * 1.3
         local hi_ = 30 - dy * 0.9
-        K.dither_row(v * 0.32, y, nil, floor(70 - hw), floor(70 - hi_))
-        K.dither_row(v, y, nil, floor(70 - hi_), floor(70 + hi_))
-        K.dither_row(v * 0.32, y, nil, floor(70 + hi_), floor(70 + hw))
+        local a, b = floor(70 - hi_ * 0.45), floor(70 + hi_ * 0.45)
+        K.dither_row(v * 0.22, y, nil, floor(70 - hw), floor(70 - hi_))
+        K.dither_row(v * 0.55, y, nil, floor(70 - hi_), a)
+        K.dither_row(v * 1.1, y, nil, a, b)
+        K.dither_row(v * 0.55, y, nil, b, floor(70 + hi_))
+        K.dither_row(v * 0.22, y, nil, floor(70 + hi_), floor(70 + hw))
       end
     end
     -- the sun, low behind the web, rising with the bloom
@@ -161,7 +176,7 @@ return function(K)
         local off = T * 3 + K.drift_x * 0.3 + y * 9
         for x = off % 19 - 19, 127, 19 do
           local w = sin(x * 0.05 + y * 0.4 - T * 0.2)
-          if w > -0.2 then put(nat * (1.5 + 2 * (w + 0.2)) + K.bj(floor(x) + y), x, y, 7 + floor(4 * w), 1) end
+          if w > -0.2 then put((nat * (1.5 + 2 * (w + 0.2)) + K.bj(floor(x) + y)) * K.ramp(w, -0.2, 0.1), x, y, 7 + floor(4 * w), 1) end
         end
       end
     end

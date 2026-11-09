@@ -42,15 +42,19 @@ return function(K)
   -- water, and a broken lit line along the water's edge
   local banks = K.bake(function(rec)
     local k = 0
+    -- (grass: short upright blades, a few leaning, so the banks read as
+    -- turf and never as more of the water's dashes)
     local function strokes(y, x0, x1, dens, salt)
       local x = x0
       while x < x1 do
         k = k + 1
         local h = K.hash(k, salt)
-        local len = 1 + floor(4 * K.hash(k, salt + 1))
         local d = dens(x)
-        if h < d then rec(h < d * 0.2 and 2 or 1, x, y, math.min(len, x1 - x), 1) end
-        x = x + len + 1 + floor(3 * K.hash(k, salt + 2))
+        if h < d then
+          local tall = 1 + floor(2.5 * K.hash(k, salt + 1))
+          rec(h < d * 0.2 and 2 or 1, x, y - tall + 1, 1, tall)
+        end
+        x = x + 3 + floor(3 * K.hash(k, salt + 2))
       end
     end
     for y = 0, 13 do
@@ -230,10 +234,12 @@ return function(K)
     -- the wake: two lines of riffles opening downstream, longer and
     -- brighter with out_mid
     local mid = A[K.MID]
-    local n = 3 + floor(mid * 5 + 0.5)
-    for k = 1, n do
-      local f = sin(k * 1.7 - T * 5 + i)
-      local l = (2.2 + 3.2 * mid) * (1 - k / (n + 1)) + (f > 0.4 and 1 or 0)
+    -- (it lengthens by fading its far riffle in; the riffles shimmer by
+    -- light, never switching)
+    local nf = 3 + mid * 5
+    for k = 1, floor(nf) + 1 do
+      local f = sin(k * 1.7 - T * 3 + i)
+      local l = ((2.2 + 3.2 * mid) * math.max(0, 1 - k / (nf + 1)) + 0.8 * K.ramp(f, 0.2, 0.7)) * clamp(nf + 1 - k, 0, 1)
       local xx = x + rx + k * 3
       put(l, xx, y - ry - k * 0.8 + K.heave(xx) * 0.3, 2, 1)
       put(l, xx, y + ry + k * 0.8 + K.heave(xx) * 0.3, 2, 1)
@@ -299,7 +305,7 @@ return function(K)
         local w = sin(xc * 0.09 + y0 * 0.5 - T * 0.6) + 0.6 * sin(xc * 0.031 - y0 * 0.2 + T * 0.25)
         local cl = clear_of(xc, y)
         if w > -0.5 and cl > 0 and y > K.at(far_e, xc) + 1 and y < K.at(near_e, xc) - 1 then
-          local l = base + h * 1.6 - 0.8 + (w > 0.9 and 0.8 or 0)
+          local l = (base + h * 1.6 - 0.8 + 0.8 * K.ramp(w, 0.7, 1.1)) * K.ramp(w, -0.5, -0.2)
           -- (the light glancing off the moving water: out_hi)
           local gl = sin(xc * 0.23 + y0 * 1.3 - T * 1.1) * sin(xc * 0.071 - y0 * 0.4 + T * 0.4)
           if gl > 0.3 then l = l + hi * 5.5 * (gl - 0.3) * 1.6 end
@@ -323,13 +329,15 @@ return function(K)
     -- white water: flecks of foam running off the stones and down the
     -- stream, as many as the water sounds bring
     if nat > 0.02 then
-      local nf = floor(#FLECK * clamp(nat * 0.8, 0, 0.75) + 0.5)
-      for j = 1, nf do
+      -- (the newest fleck fades in with the water sounds' fraction)
+      local nff = #FLECK * clamp(nat * 0.8, 0, 0.75)
+      for j = 1, math.min(#FLECK, floor(nff) + 1) do
         local f = FLECK[j]
+        local fe = clamp(nff - j + 1, 0, 1)
         local x = (f[1] + fp * (1.1 + 0.4 * f[3])) % 140 - 6
         local y = f[2] + sin(T * 1.3 + j) * 0.8
         local cl = clear_of(x, y)
-        if cl > 0 then put(cl * (2.2 + 3 * nat * f[3] + 1.2 * nat), x, y, 1 + floor(f[3] * 2.5), 1) end
+        if cl > 0 then put(fe * cl * (2.2 + 3 * nat * f[3] + 1.2 * nat), x, y, 1 + floor(f[3] * 2.5), 1) end
       end
       for i = 1, 4 do
         local s = ST[i]
@@ -363,7 +371,7 @@ return function(K)
           put(9 * e, x + 1, y - 1, 2, 3)
           for j = 1, 4 do
             local f = sin(j * 1.9 - T * 7)
-            put(e * (5.5 - j * 0.9 + (f > 0 and 1.5 or 0)), x + 2 + j * 3, y - 1 + (j % 2) * 2, 2, 1)
+            put(e * (5.5 - j * 0.9 + 1.5 * K.ramp(f, -0.3, 0.3)), x + 2 + j * 3, y - 1 + (j % 2) * 2, 2, 1)
           end
         elseif mk.slot == 2 then
           -- a pebble on the bed catches the light: a glint that pulses twice

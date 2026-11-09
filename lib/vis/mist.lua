@@ -78,6 +78,12 @@ return function(K)
 
   local function sample(u, v) return u * 127, WL + 3 + v * 22 end
 
+  -- the pale morning sky behind the fog: a faint glow, stronger round the
+  -- sun and toward the shore (its strength and the sun's place set each
+  -- frame)
+  local F_sky, F_sx = 1, 92
+  local function pale(y) return F_sky * (0.08 + 0.42 * (y / WL) ^ 2) end
+
   -- the water rows' keep and sparkle, made once (inputs set each frame)
   local F_d, F_y, F_T, F_hi = 2, 0, 0, 0
   local function keep_shore(x) return WL - F_d < K.at(shore, x) + 2 end
@@ -100,15 +106,21 @@ return function(K)
     -- passes it comes through brighter, with a glow round it
     local sx, sy = 92 + 4 * sin(T * 0.02), 13
     local sl = 1.5 + bloom * 1.2 + sun * 5
+    -- (an airy morning, not a black night: the fog lies over a pale sky)
+    -- (the haze burns off as the day comes up: the bloom thins it)
+    F_sky, F_sx = (0.7 + 0.5 * breath + 0.3 * sun) * (1 - 0.75 * bloom), sx
+    K.gradient(0, WL - 1, pale, shore)
     for dy = -4, 4 do
       local hw = floor(math.sqrt(20 - dy * dy) + 0.5)
       put(sl - (math.abs(dy) > 3 and 0.5 or 0), sx - hw, sy + dy, 2 * hw, 1)
     end
     if sun > 0.05 then
-      for r = 1, 3 do
-        local y0 = sy - 4 - r * 2
-        put(sun * (2.5 - r * 0.6), sx - 6 - r * 3, sy + 6 + r * 2, 12 + r * 6, 1)
-        put(sun * (2.5 - r * 0.6), sx - 5 - r * 2, y0, 10 + r * 4, 1)
+      -- (its glow a soft round haze in hand-made strokes)
+      for dy = -11, 11 do
+        local hw = 16 * math.sqrt(math.max(0, 1 - (dy / 12) ^ 2))
+        local v = sun * (1 - math.abs(dy) / 13)
+        K.dither_row(v * 0.55, sy + dy, shore, floor(sx - hw), floor(sx + hw))
+        K.dither_row(v * 1.3, sy + dy, shore, floor(sx - hw * 0.55), floor(sx + hw * 0.55))
       end
       -- its path on the water
       for y = WL + 2, 62, 2 do
@@ -122,7 +134,7 @@ return function(K)
       F_d = d
       K.streaks(1, WL + d, 7, 10, K.drift_x * 0.3 + d * 3, keep_shore)
     end
-    K.hline(1.5 + breath, WL, 0, 128, 8)
+    K.streaks(1.5 + breath, WL, 11, 12, 7)
     -- still water: long faint streaks, the light lying on it, sparkling
     -- with out_hi
     F_T, F_hi = T, hi
@@ -137,7 +149,11 @@ return function(K)
         local y = 60 + r * 2
         for x = (K.drift_x + r * 5 + T * 2) % 9 - 9, 127, 9 do
           local w = sin(x * 0.4 + T * 1.8 + r)
-          if w > 0.2 then put(nat * (2 + 2 * w), x, y + (w > 0.7 and -1 or 0), 4, 1) end
+          if w > 0.2 then
+            local l = nat * (2 + 2 * w) * K.ramp(w, 0.2, 0.45)
+            local up = K.ramp(w, 0.6, 0.85)
+            put(l * (1 - up), x, y, 4, 1); put(l * up, x, y - 1, 4, 1)
+          end
         end
       end
     end
@@ -248,12 +264,14 @@ return function(K)
         local n = sin(x * 0.045 + y * 0.11 - dx * 0.02 + T * 0.04) + 0.6 * sin(x * 0.11 - y * 0.23 + T * 0.09)
         local thick = (n * 0.5 + 0.5) * band
         if lay > 0 then thick = thick + 0.4 * lay * math.max(0, 1 - math.abs(x - layx) / 40) end
-        if thick > 1.05 - dens then
+        local th = 1.05 - dens
+        if thick > th then
           local o = any and openness(x + 3, y) or 0
           if o < 0.45 then
-            -- (the fog round a clear patch is lit by the light coming through)
-            local l = (1 + (thick > 1.3 - dens * 0.5 and 1 or 0) + bloom * 0.6 + breath * 1.8 + lay * (0.6 + 1.2 * K.chord_glow)
-              + o * 7) * (1 - o)
+            -- (the fog round a clear patch is lit by the light coming
+            -- through; a wisp gathers out of nothing as the fog thickens)
+            local l = (1 + K.ramp(thick, 1.2 - dens * 0.5, 1.4 - dens * 0.5) + bloom * 0.6 + breath * 1.8 + lay * (0.6 + 1.2 * K.chord_glow)
+              + o * 7) * (1 - o) * K.ramp(thick, th, th + 0.12)
             put(l, x, y + (h > 0.85 and 1 or 0), clamp(floor((2 + (thick - 1.05 + dens) * 5) * wmul * (0.6 + 0.8 * h)), 1, 9), 1)
           end
         end
@@ -263,11 +281,17 @@ return function(K)
     for _, r in ipairs(NEAR) do
       local x0, h = r[1], r[2]
       local lean = sin(T * 0.5 + r[3]) * (0.5 + 0.8 * K.energy) + K.heave(x0) * 0.4
+      -- (each with its own set and a little level jitter, one carrying a
+      -- leaf: stalks, not bars)
+      lean = lean + (r[3] - 2.7) * 0.9
       for s = 0, h - 1, 3 do
         local uu = s / h
-        put(2.5, x0 + lean * uu * uu, 63 - s - 3, 1, 3)
+        put(2.5 + K.bj(x0 * 3 + s) * 0.4, x0 + lean * uu * uu, 63 - s - 3, 1, 3)
       end
       put(3, x0 + lean, 63 - h - 3, 1, 3)
+      if h >= 16 then
+        for j = 1, 4 do put(2 - j * 0.15, x0 - j + lean * 0.3, 63 - h * 0.5 - j * 1.3 + j * j * 0.28, 1, 1) end
+      end
     end
     -- geese pass over, above the fog
     if inc and inc.name == "geese" then

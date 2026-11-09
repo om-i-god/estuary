@@ -42,7 +42,7 @@ return function(K)
   local mud = K.bake(function(rec)
     for y = HZ + 2, 63, 2 do
       for x = (y * 3) % 7, 127, 7 do
-        if K.hash(x * 64 + y, 88) < 0.3 then rec(1, x, y, 2, 1) end
+        if K.hash(x * 64 + y, 88) < 0.24 then rec(1, x, y, 2, 1) end
       end
     end
     for x = 0, 126, 6 do rec(1.5, x + 2 * K.hash(x, 86), HZ - 1 - floor(2 * K.hash(x, 87)), 2, 1) end
@@ -56,8 +56,16 @@ return function(K)
     end
   end)
   -- salt-marsh grass along the near edge: {x, height, phase}
+  -- (clumps at their own spacing, each a few blades fanning out: marsh
+  -- grass, not fence posts)
   local GRASS = {}
-  for k = 1, 16 do GRASS[k] = {k * 8 - 4 + 3 * K.hash(k, 92), 3 + 4 * K.hash(k, 93), K.hash(k, 94) * 6} end
+  do
+    local x = 2
+    for k = 1, 14 do
+      GRASS[k] = {x, 3 + 5 * K.hash(k, 93), K.hash(k, 94) * 6, 1 + floor(3 * K.hash(k, 96))}
+      x = x + 5 + 9 * K.hash(k, 92)
+    end
+  end
 
   -- the few birds nearest a column bank and swing out toward it
   local function nearest(x, n)
@@ -153,7 +161,7 @@ return function(K)
     F_glow = 0.72 + 0.55 * bloom + 1.3 * breath
     K.gradient(14, HZ - 1, sky_glow)
     K.blit(clouds, 0.9 + 0.6 * bloom, K.drift_x * 0.05 + T * 0.25, true)
-    put(2, 0, HZ, 128, 1)
+    K.streaks(2, HZ, 13, 14, 2)
     K.blit(mud, 1)
     K.twinkle(WET, hi, 8)
     -- the chord's pools on the mud, shining with the sky
@@ -174,15 +182,21 @@ return function(K)
     -- the channels: as the water rises they widen and shine, and the light
     -- runs along them
     local water = clamp(0.3 + 0.6 * nat + 0.4 * sw + 0.2 * bloom, 0, 1)
+    -- (they widen a fraction of a row at a time; the light runs along
+    -- them and glints without switching)
     for k = 1, 3 do
-      local w = 1 + floor(water * (k == 1 and 0.8 or 1.6))
+      -- (the far channel stays a single row; the near two reach two rows at
+      -- full water, as before)
+      local w = k == 1 and 1 or 1 + clamp((water - 0.3) * 1.45, 0, 1)
+      local wi = floor(w)
       for x = 0, 126, 2 do
         local y = chan(k, x) + K.heave(x * 1.5 + k * 20) * 0.35
         local sh = sin(x * 0.2 - T * 1.1 + K.drift_x * 0.1 + k)
-        local l = 1 + water * 1.6 + (sh > 0.7 and 1 or 0) + breath * 1.2 + K.bj(x + k * 64)
-        put(l, x, y, 2, w)
+        local l = 1 + water * 1.6 + K.ramp(sh, 0.55, 0.85) + breath * 1.2 + K.bj(x + k * 64)
+        put(l, x, y, 2, wi)
+        put(l * (w - wi), x, y + wi, 2, 1)
         local g = hi * 3.5 * math.max(0, sin(x * 1.3 + T * 7 + k))
-        if g > 0.5 then put(l + g, x, y, 1, 1) end
+        if g > 0.5 then put(l + g - 0.5, x, y, 1, 1) end
       end
     end
     -- the notes that are not banking birds
@@ -215,28 +229,36 @@ return function(K)
     for _, b in ipairs(birds) do
       local age = T - b.lit
       local catch = age < 1.6 and sin(math.min(1, age / 1.6) * math.pi) or 0
-      local x, y = floor(b.x + 0.5), floor(b.y + 0.5)
+      -- (each bird glides along at a fraction of a pixel: its light is
+      -- shared between the columns it lies across, so the flock drifts
+      -- rather than ticks)
+      local x, y = b.x, floor(b.y + 0.5)
       local lv = 4 + 1.5 * bloom + catch * 5 + 2 * mid
       if catch > 0.3 then
         -- banking: the wings flat and wide, the light along them
-        put(lv, x - 2, y, 5, 1)
+        K.dash(lv, x - 2, y, 5)
         put(lv * 0.5, x, y + 1, 1, 1)
       else
         local f = sin(K.NOW * (flap + b.ph * 0.3) + b.ph)
         local wy = f > 0.3 and -1 or (f < -0.3 and 1 or 0)
-        put(lv, x, y, 1, 1)
-        put(lv * 0.8, x - 1, y + wy, 1, 1)
-        put(lv * 0.8, x + 1, y + wy, 1, 1)
-        if mid > 0.4 then put(lv * 0.5, x - 2, y + wy * 2, 1, 1); put(lv * 0.5, x + 2, y + wy * 2, 1, 1) end
+        K.dash(lv, x, y, 1)
+        K.dash(lv * 0.8, x - 1, y + wy, 1)
+        K.dash(lv * 0.8, x + 1, y + wy, 1)
+        local ext = K.ramp(mid, 0.3, 0.55)
+        if ext > 0 then put(lv * 0.5 * ext, x - 2, y + wy * 2, 1, 1); put(lv * 0.5 * ext, x + 2, y + wy * 2, 1, 1) end
       end
       -- its shadow on the mud, faint, far below
       if catch > 0.3 then put(1.5, x - 1, HZ + 4 + (y / HZ) * 16, 3, 1) end
     end
     -- salt-marsh grass close by, in the wind
-    for _, g in ipairs(GRASS) do
+    for k, g in ipairs(GRASS) do
       local lean = sin(T * 0.8 + g[3]) * (0.5 + 2 * nat) + K.heave(g[1]) * 0.4
-      put(2 + bloom, g[1], 63 - g[2] * 0.5, 1, g[2] * 0.5 + 1)
-      put(2 + bloom, g[1] + lean, 63 - g[2], 1, g[2] * 0.5)
+      for b = 0, g[4] - 1 do
+        local o = b - (g[4] - 1) * 0.5
+        local h = g[2] * (1 - math.abs(o) * 0.25)
+        put(2 + bloom + K.bj(k * 4 + b) * 0.4, g[1] + o, 63 - h * 0.5, 1, h * 0.5 + 1)
+        put(2.2 + bloom, g[1] + o * 2 + lean, 63 - h, 1, h * 0.5)
+      end
     end
     -- incidents
     local inc = K.inc

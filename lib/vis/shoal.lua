@@ -30,8 +30,14 @@ return function(K)
 
   local far = K.bake(function(rec)
     for k = 1, 6 do
+      -- (a pile in the haze: a dim upright, broken here and there by the
+      -- haze, never a dotted rule)
       local x = floor(8 + (k - 1) * 22 + 6 * K.hash(k, 801))
-      for y = SURF + 2, BED - 2, 3 do rec(1, x, y, 2, 1) end
+      for y = SURF + 2, BED - 2, 3 do
+        local h = K.hash(k * 64 + y, 813)
+        if h < 0.85 then rec(1, x, y, 1, 3) end
+        if h < 0.45 then rec(1, x + 1, y, 1, 3) end
+      end
     end
   end)
   local bed = K.bake(function(rec)
@@ -158,7 +164,10 @@ return function(K)
       if x < DECK0 or x >= DECK1 then
         local w = sin(x * 0.13 - T * 1.1 + K.drift_x * 0.04) + 0.6 * sin(x * 0.29 + T * 0.8)
         local g = hi * 8 * math.max(0, sin(x * 1.1 + T * 4.5))
-        put(math.min(12, 2.4 + bloom + breath * 2.5 + K.bj(x) + (w > 0.6 and 1.4 or 0) + g), x, SURF + (w > 0 and 0 or 1) + K.heave(x) * 0.25, 2, 1)
+        -- (a crest brightens by a ramp and the skin dips by sharing its
+        -- light with the row below: nothing hops)
+        local l = math.min(12, 2.4 + bloom + breath * 2.5 + K.bj(x) + 1.4 * K.ramp(w, 0.4, 0.8) + g)
+        K.vshare(l, x, floor(SURF + K.heave(x) * 0.25 + 0.5), 2, K.ramp(-w, -0.3, 0.3) * 0.7)
       else
         put(1, x, SURF - 1, 2, 1)
       end
@@ -195,9 +204,12 @@ return function(K)
     -- the weed on the bed, swaying with the heave and a surge
     for k, w in ipairs(WEED) do
       local lean = sin(T * 0.7 + w[3]) * (0.5 + 2.5 * lo) - sw * 4 + K.heave(w[1]) * 0.5
+      -- (a frond with leaflets off alternate sides, not a bare stick)
       for j = 0, w[2] do
         local u = j / w[2]
-        put(2.4 + bloom * 0.6 + K.bj(k * 9 + j) * 0.4, w[1] + lean * u * u, BED - j, 1, 1)
+        local x = w[1] + lean * u * u
+        put(2.4 + bloom * 0.6 + K.bj(k * 9 + j) * 0.4, x, BED - j, 1, 1)
+        if j % 3 == 1 then put(1.8 + bloom * 0.5, x + ((j // 3) % 2 == 0 and 1 or -1), BED - j - 1, 1, 1) end
       end
     end
     -- motes stirred up by the water sounds
@@ -205,20 +217,23 @@ return function(K)
       for i = 1, #MOTES, 2 do
         local x = (MOTES[i] + K.drift_x * 0.4 + T * (1.5 + 6 * sw)) % 128
         local y = MOTES[i + 1] + sin(T * 0.4 + i) * 3
-        if (i // 2) % 10 < nat * 10 then put(2.5 + 4.5 * nat, x, y, 2, 1) end
+        local f = clamp(nat * 10 - (i // 2) % 10, 0, 1)
+        if f > 0 then put((2.5 + 4.5 * nat) * f, x, y, 2, 1) end
       end
     end
     -- the school
     for k, f in ipairs(fish) do
-      local x, y = floor(f.x + 0.5), floor(f.y + 0.5)
+      -- (each fish glides at a fraction of a pixel: the school drifts
+      -- rather than ticks)
+      local x, y = f.x, floor(f.y + 0.5)
       local dir = f.vx >= 0 and 1 or -1
       -- (a fish flashes silver as it turns side-on to the light)
       local turn = clamp(abs(f.vy) / 5, 0, 1)
       local age = K.T - f.lit
       local catch = age < 1.8 and sin(math.min(1, age / 1.8) * math.pi) or 0
       local l = math.min(12, 4 + 1.2 * bloom + 3 * turn + 5 * catch + hi * 5 * math.max(0, sin(T * 3 + f.ph * 4)))
-      put(l + K.bj(k) * 0.5, x - (dir > 0 and 2 or 0), y, 3, 1)
-      put(l * 0.55, x - dir * 2 - (dir > 0 and 1 or 0), y + (f.vy > 1 and -1 or (f.vy < -1 and 1 or 0)), 1, 1)
+      K.dash(l + K.bj(k) * 0.5, x - (dir > 0 and 2 or 0), y, 3)
+      K.dash(l * 0.55, x - dir * 2 - (dir > 0 and 1 or 0), y + (f.vy > 1 and -1 or (f.vy < -1 and 1 or 0)), 1)
     end
     -- the notes' other marks
     for i = #marks, 1, -1 do

@@ -26,11 +26,13 @@ return function(K)
   local rings, pending, live, nl = {}, {}, {}, 0
   local dimples, dimple_acc = {}, 0
   local drops = {}                        -- slot 3's bounced droplets
+  local band = {0, 0, 0, 0}               -- each sounding motif's band, eased
   local pads
 
   function M.clear()
     rings, pending, live, nl = {}, {}, {}, 0
     dimples, dimple_acc, drops = {}, 0, {}
+    for s = 1, 4 do band[s] = 0 end
   end
 
   function M.init()
@@ -169,7 +171,9 @@ return function(K)
       local m, p = K.chord_at(i)
       local c = CL[i]
       if m then
-        c[1] = (K.cx(m) + par + 6 * sin(K.T * 0.03 + i)) % 140 - 6
+        -- (it wraps round well beyond the screen's sides, so a wisp
+        -- leaves on one side before it comes back on the other)
+        c[1] = (K.cx(m) + par + 6 * sin(K.T * 0.03 + i) + 18) % 176 - 24
         c[2] = clamp(2 + (76 - m) / 40 * 10, 2, 12)
         c[3] = p
       else
@@ -253,7 +257,9 @@ return function(K)
       end
     end
     K.blit(leaves, 1 + 0.6 * bloom)
-    K.hline(1.2 + breath * 1.6, wl, 0, 128, 8)
+    -- (the far waterline, broken where the bank's shadow and the reeds
+    -- meet the water: drawn by hand, never ruled)
+    K.streaks(1.3 + breath * 1.6, wl, 10, 11, 3)
     -- the bank, the sky and its clouds lie in the water: the sky's glow comes
     -- back below the trees' reflection, then long pale streaks thin out
     -- toward you; rings bend and stir them, out_hi sparkles on them
@@ -300,29 +306,34 @@ return function(K)
         end
       end
     end
-    K.surface(0, 42 - floor(nat * 6), 128, 63, 1 + nat * 1.2, 9 - floor(nat * 2), 5 - floor(nat * 1.5))
+    -- (the water boatmen's stir thickens the near surface: more of its
+    -- dashes show, on rows that never move)
+    K.surface(0, 37, 128, 63, 1 + nat * 1.8, 8, 4, 2, nat * 0.55)
     -- a swell rolls slow broad bands of light down the pond
     if sw > 0.03 then
       for b = 0, 2 do
         local y = wl + 4 + ((T * 4 + b * 15) % 45)
         local l = sw * (1.2 + 0.5 * sin(T + b))
-        for x = (K.drift_x * 0.5 + b * 11) % 12 - 12, 127, 12 do put(l, x, y, 8, 1) end
+        for x = (K.drift_x * 0.5 + b * 11) % 12 - 12, 127, 12 do put(l, x, y, 6, 1) end
       end
     end
     -- out_mid: a band of wavelets across the middle water, more and brighter
     -- as the mid range fills
-    local nw = floor(mid * 14 + 0.5)
-    for k = 1, nw do
+    -- (the newest fades in as the mid rises: none switches on)
+    local nwf = mid * 14
+    for k = 1, math.min(14, floor(nwf) + 1) do
       local wx = (WV[k] * 140 + K.drift_x * 0.5 + 6 * sin(T * 0.4 + k)) % 136 - 4
       local wy = 30 + 14 * WV[k + 14] + K.heave(wx) * 0.4
-      local l = 1 + 2.2 * mid * (0.6 + 0.4 * sin(T * 1.3 + k * 2))
+      local l = (1 + 2.2 * mid * (0.6 + 0.4 * sin(T * 1.3 + k * 2))) * clamp(nwf - k + 1, 0, 1)
       put(l, wx - 2, wy, 5, 1); put(l * 0.8, wx, wy - 1, 1, 1)
     end
     -- a sounding motif's band glints faintly along its row
+    -- (eased in and out as the motif comes and goes)
     for s = 1, 4 do
-      if K.sounding(S, s) then
+      band[s] = K.follow(band[s], K.sounding(S, s) and 1 or 0, 0.8, K.DT)
+      if band[s] > 0.05 then
         local y = slot_y(s)
-        for x = K.drift_x % 8, 127, 8 do put(2, x, y + K.heave(x) * 0.35, 1, 1) end
+        for x = K.drift_x % 8, 127, 8 do put(2 * band[s] + K.bj(floor(x) + s * 16) * 0.5, x, y + K.heave(x) * 0.35, 1, 1) end
       end
     end
 
@@ -415,9 +426,20 @@ return function(K)
       local lean = (K.flow(x0, 60) * 0.5 + sin(T * 0.8 + r[3]) * (0.8 + 1.5 * K.energy) + K.heave(x0) * 0.6)
       for s = 0, h - 1, 3 do
         local u = s / h
-        put(2.5, x0 + lean * u * u, 63 - s - 3, 1, 3)
+        put(2.5 + K.bj(x0 * 7 + s) * 0.4, x0 + lean * u * u, 63 - s - 3, 1, 3)
       end
-      put(3.5, x0 + lean, 63 - h - 2, 1, 2)
+      if h >= 12 then
+        -- a tall one carries a seed head, lit along its sunward side
+        put(3 + 0.8 * bloom, x0 + lean - 1, 63 - h - 5, 2, 4)
+        put(4 + bloom, x0 + lean, 63 - h - 5, 1, 2)
+      else
+        put(3.5, x0 + lean, 63 - h - 2, 1, 2)
+      end
+      -- and a leaf arching off it, swaying a little behind the stem
+      local dir = x0 < 64 and 1 or -1
+      for j = 1, 3 do
+        put(2.2 - j * 0.3, x0 + dir * j + lean * 0.3 * j / 3, 63 - h * 0.45 - j * 1.4 + j * j * 0.3, 1, 1)
+      end
     end
 
     -- a moment: a cat's paw of wind runs across the pond, roughening it

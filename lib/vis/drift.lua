@@ -25,6 +25,7 @@ return function(K)
   local PETALS = 10
   local MARK_MAX = 10
   local petals, marks
+  local snd = {0, 0, 0, 0}                -- each motif sounding, eased
 
   function M.init()
     petals, marks = {}, {}
@@ -34,7 +35,7 @@ return function(K)
     end
   end
 
-  function M.clear() marks = {} end
+  function M.clear() marks = {}; for i = 1, 4 do snd[i] = 0 end end
 
   -- the banks' grass, baked once: dashes in the corners, a lit lip
   local function e1(y) return y < 16 and 40 * (1 - (y / 16) ^ 1.6) + 2 * sin(y * 1.3) or 0 end
@@ -81,7 +82,7 @@ return function(K)
   local F_T, F_hi, F_y = 0, 0, 0
   local function sheen_keep(x) return sin(x * 0.05 + F_y * 0.13 - F_T * 0.1) > -0.3 end
   local function sheen_glint(x) return 0, F_hi * 3 * math.max(0, sin(x * 0.9 + F_y * 1.7 + F_T * 6)) end
-  local PX, PY, PH = {}, {}, {}
+  local PX, PY, PH, PO = {}, {}, {}, {}
 
   -- a note lands on its motif's eddy, across by its pitch: the eddy's near
   -- side for a low note, its far side for a high one
@@ -152,14 +153,16 @@ return function(K)
     -- the sky lying on the pool: long faint sheens that slide with the
     -- current, broken where the eddies turn the surface
     F_T, F_hi = T, hi
-    for y = 6, 58, 4 do
+    -- (sparse enough that the eddies' round paths read through them)
+    for y = 7, 58, 6 do
       F_y = y
-      K.streaks(1 + 0.6 * bloom + breath * 1.5, y, 7 + (y * 3) % 5, 17 + (y * 7) % 6, K.drift_x * (0.5 + y * 0.01) + y * 9.7 + sin(T * 0.2 + y) * 3,
+      K.streaks(0.9 + 0.6 * bloom + breath * 2.4, y, 6 + (y * 3) % 5, 26 + (y * 7) % 9, K.drift_x * (0.5 + y * 0.01) + y * 9.7 + sin(T * 0.2 + y) * 3,
         sheen_keep, sheen_glint)
     end
     -- the surface: a faint light texture moving with the current, ruffled
     -- by the wind the water sounds bring
-    K.surface(0, 1, 128, 64, 1 + nat * 1.3, 15 - floor(nat * 5), 7 - floor(nat * 2), 3)
+    -- (on fixed rows: the wind thickens it rather than re-laying it)
+    K.surface(0, 1, 128, 64, 1 + nat * 1.8, 14, 6, 3, nat * 0.9)
     -- the eddies' paths: arcs of light that run round with the water,
     -- fuller and brighter with out_mid, breathing on the bar
     for i = 1, 4 do
@@ -167,9 +170,10 @@ return function(K)
       for k = 0, n - 1 do
         local a = k / n * K.TAU
         local sh = sin(a * 3 - T * (0.5 + 0.1 * i) * (i % 2 == 0 and 1 or -1) + i)
-        if sh > 0.3 - 0.55 * mid then
+        local th = 0.3 - 0.55 * mid
+        if sh > th then
           local x, y = orbit_pt(i, a)
-          put(1 + (sh > 0.8 and 1 or 0) + mid * 1.2 + breath * 1.3 + K.bj(k + i * 64) + hi * 3.5 * math.max(0, sin(k * 2.3 + T * 7 + i)), x, y, 2, 1)
+          put((1.2 + K.ramp(sh, 0.65, 0.95) + mid * 1.2 + breath * 2.2 + K.bj(k + i * 64) + hi * 3.5 * math.max(0, sin(k * 2.3 + T * 7 + i))) * K.ramp(sh, th, th + 0.25), x, y, 2, 1)
         end
       end
     end
@@ -196,12 +200,16 @@ return function(K)
         local a = p * K.TAU - math.pi / 2
         local x, y = orbit_pt(i, a)
         local nx, ny = orbit_pt(i, a + 0.05)
-        if K.sounding(S, i) then
-          local lv = 6 + K.slot_flash[i] * 6
+        -- (a leaf brightens as its motif comes in and its wake opens, and
+        -- both fade as it goes)
+        snd[i] = K.follow(snd[i], K.sounding(S, i) and 1 or 0, 0.6, K.DT)
+        local on = snd[i]
+        if on > 0.02 then
+          local lv = 2.5 + (3.5 + K.slot_flash[i] * 6) * on
           -- the wake: two fading arms opening behind it
           for k = 1, 7 do
             local tx, ty = orbit_pt(i, a - k * 0.06)
-            local l = lv * 0.4 * (1 - k / 8) * (0.7 + 0.6 * A[K.AMP])
+            local l = lv * 0.4 * (1 - k / 8) * (0.7 + 0.6 * A[K.AMP]) * on
             put(l, tx, ty, 1, 1)
             if k > 2 then
               local ox, oy = orbit_pt(i, a - k * 0.06, 1 + k * 0.012)
@@ -210,7 +218,7 @@ return function(K)
           end
           leaf(x, y, nx - x, ny - y, lv)
           np = np + 1
-          PX[np], PY[np], PH[np] = x, y, p
+          PX[np], PY[np], PH[np], PO[np] = x, y, p, on
         else
           leaf(x, y, nx - x, ny - y, 2.5)
         end
@@ -266,7 +274,7 @@ return function(K)
         if d < 0.12 then
           local x0, y0, x1, y1 = PX[i], PY[i], PX[j], PY[j]
           local n = math.max(2, floor(math.max(math.abs(x1 - x0), math.abs(y1 - y0)) / 2))
-          local base = (1 - d / 0.12) * 5 * (0.8 + 0.5 * hi)
+          local base = (1 - d / 0.12) * 5 * (0.8 + 0.5 * hi) * math.min(PO[i], PO[j])
           for s = 1, n - 1 do
             local u = s / n
             local lv = base * (0.55 + 0.45 * sin(T * 6 + s * 0.9 + i * j))

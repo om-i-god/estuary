@@ -33,11 +33,13 @@ return function(K)
     return 23 + 16 * u ^ 1.8 - 3 * sin(u * 6) * (1 - u) + 0.7 * sin(x * 1.3)
   end)
   -- scrub and rock on the headland's back, baked once
+  -- (sparse, and thinning away from the rim, so the headland reads as a
+  -- dark mass against the glow rather than a scatter of points)
   local scrub = K.bake(function(rec)
     for c = 0, 27 do
       local t = head[c]
       for y = floor(t) + 2, 38, 2 do
-        if K.hash(c * 64 + y, 21) < 0.3 - (y - t) * 0.012 then rec(1, c * 2 + (y // 2) % 2, y, 1 + floor(2 * K.hash(c + y, 22)), 1) end
+        if K.hash(c * 64 + y, 21) < 0.2 - (y - t) * 0.014 then rec(1, c * 2 + (y // 2) % 2, y, 1 + floor(2 * K.hash(c + y, 22)), 1) end
       end
     end
   end)
@@ -106,15 +108,17 @@ return function(K)
     F_yw, F_reach, F_glow = yw, reach, glow
     for y = 0, top do K.dither_row(sky(y) + breath * 1.8 * clamp(1 - (yw - y) / 14, 0, 1), y, head) end
     K.blit(clouds, 0.8 + 0.6 * bloom, K.drift_x * 0.05 + T * 0.35, true)
-    for y = top - 8 - lift, top do
-      local h = (top - y)
-      local w = floor((30 - h * 3 + lift * 2) * (0.8 + 0.4 * bloom))
-      if w > 0 then put(sky(y) + 0.8 + breath * 0.8, sx - w, y, 2 * w, 1) end
+    -- the glow round the sun: a soft rounded halo in hand-made strokes,
+    -- not stacked bars
+    for y = top - 10 - lift, top do
+      local h = (top - lift * 0.5 - y) / (10 + lift * 0.5)
+      local w = (26 + lift * 2) * (0.8 + 0.3 * bloom) * math.sqrt(math.max(0, 1 - h * h))
+      if w > 1 then K.dither_row(sky(y) + (0.9 + breath * 0.8) * (1 - h * 0.5), y, head, floor(sx - w), floor(sx + w)) end
     end
     -- the headland's rim catches the light; scrub on its back
     for c = 0, 27 do
       local t = head[c]
-      if t < yw - 1 then put(1.2 + 0.8 * bloom, c * 2, t, 2, 1) end
+      if t < yw - 1 then put(1.8 + 0.9 * bloom + K.bj(c) * 0.3, c * 2, t, 2, 1) end
     end
     K.blit(scrub, 1 + 0.5 * bloom)
     for i, s in ipairs(STARS) do
@@ -137,14 +141,16 @@ return function(K)
       local e = ease(K.moment_age / 1.5) * ease((mdur - K.moment_age) / 2)
       local x0 = -14 + f * 150
       local y0 = 9 + sin(f * 5) * 2
-      for k = 0, 8 do
+      -- (far off: small birds, spaced so the V reads as a skein, not a
+      -- tangle of wings)
+      for k = 0, 12 do
         local side = (k % 2 == 0) and 1 or -1
         local rank = (k + 1) // 2
-        local x, y = x0 - rank * 7, y0 + side * rank * 2.6
+        local x, y = x0 - rank * 6, y0 + side * rank * 3
         local flap = sin(K.NOW * 3.5 + k * 0.7)
-        K.bird(x, y, 6 * e, flap, 2)
+        K.bird(x, y, 8.5 * e, flap, 1)
         -- and in the water below
-        K.bird(x + K.heave(x) * 0.6, yw + (yw - y) * 0.45 + 2, 2.5 * e, -flap, 1)
+        K.bird(x + K.heave(x) * 0.6, yw + (yw - y) * 0.45 + 2, 3.5 * e, -flap, 1)
       end
     end
     -- the headland's foot in the water: its dark reflection, edged by glow
@@ -157,7 +163,8 @@ return function(K)
     -- with out_mid
     for x = 54, 126, 3 do
       local w2 = sin(x * 0.09 - T * 0.8 + 2 + K.drift_x * 0.03)
-      if w2 > 0.75 - 0.6 * mid then put(1 + w2 * (1 + 2.2 * mid), x, yw - 2 + wave(x) * 0.5, 3, 1) end
+      local th = 0.75 - 0.6 * mid
+      if w2 > th then put((1 + w2 * (1 + 2.2 * mid)) * K.ramp(w2, th, th + 0.2), x, yw - 2 + wave(x) * 0.5, 3, 1) end
     end
     -- the waterline: crests brighter, breathing with the bar
     for x = 0, 126, 2 do
@@ -186,6 +193,14 @@ return function(K)
         end
       end
     end
+    -- the sun itself lies in the water under it: a few short soft strokes,
+    -- broken by the wave, as wide as the disc and fading downward
+    for d = 1, 6 do
+      local y = floor(yw) + 1 + d
+      local hw = sr * (1.1 - d * 0.1) * (0.75 + 0.25 * sin(T * 0.9 + d * 1.7))
+      local l = sun * (0.75 - d * 0.08) * (1 - 0.5 * shade)
+      K.dash(l + K.bj(d * 5) * 0.3, sx - hw + wave(y * 3 + d) * 0.8, y, floor(hw * 2))
+    end
     -- the sun's path: broken glints down the water under it, wider and
     -- quicker with out_hi, dimmed while a cloud is over the sun
     for yy = floor(yw) + 2, 62, 2 do
@@ -208,7 +223,7 @@ return function(K)
         for x = (off % 31) - 31, 127, 31 do
           local h = K.hash(floor((x - off) / 31 + 0.5) + r * 17, 27)
           put(1.5 + 1.5 * mid + r * 0.3 + hi * 3.5 * math.max(0, sin(x * 0.7 + T * 7 + r)), x + h * 8, y, len * (0.6 + 0.6 * h), 1)
-          if nat > 0.1 and h < nat * 0.8 then put(3 + 3 * nat, x + h * 8 + len * 0.3, y - 1, 2, 1) end
+          if nat > 0.1 and h < nat * 0.8 then put((3 + 3 * nat) * K.ramp(nat * 0.8 - h, 0, 0.12), x + h * 8 + len * 0.3, y - 1, 2, 1) end
         end
       end
     end
@@ -260,9 +275,10 @@ return function(K)
         local x = dir > 0 and (58 + u * 78) or (134 - u * 78)
         local y = floor(yw) - 1
         -- a mainsail and a jib, a hull, and their light in the water
-        for k = 0, 4 do put((6.5 - k * 0.5) * e, x + k * dir, y - 10 + k * 2, 1, 10 - k * 2) end
-        for k = 1, 3 do put(5 * e, x - k * dir, y - 7 + k * 2, 1, 7 - k * 2) end
-        put(4.5 * e, x - 5, y, 11, 1)
+        -- (bright enough to stand out against the sun's glow it crosses)
+        for k = 0, 4 do put((9 - k * 0.6) * e, x + k * dir, y - 10 + k * 2, 1, 10 - k * 2) end
+        for k = 1, 3 do put(7 * e, x - k * dir, y - 7 + k * 2, 1, 7 - k * 2) end
+        put(6 * e, x - 5, y, 11, 1)
         for d = 2, 8, 2 do put(3 * e * (1 - d / 10), x - 3 + K.heave(x + d) * 0.4, y + d, 7, 1) end
       elseif inc.name == "cloud" then
         -- a soft grey cloud drifting past the sun, lit along its top

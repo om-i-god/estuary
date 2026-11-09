@@ -58,8 +58,14 @@ return function(K)
   local TRUNK = {20, 63, 107}
   local near = K.bake(function(rec)
     for t, x in ipairs(TRUNK) do
-      rec(2.4, x - 1, 6, 3, 20)
-      rec(1.6, x + 2, 6, 1, 20)
+      -- (a trunk with bark: short pieces of their own levels, a little
+      -- crooked, its lit side broken; never a solid bar)
+      for y = 6, 24, 2 do
+        local jog = floor(1.6 * K.hash(t * 40 + y, 615) - 0.3)
+        rec(2 + 0.8 * K.hash(t * 40 + y, 616), x - 1 + jog, y, 3, 2)
+        if K.hash(t * 40 + y, 617) < 0.75 then rec(1.5, x + 2 + jog, y, 1, 2) end
+        if K.hash(t * 40 + y, 618) < 0.3 then rec(2.9, x - 1 + jog, y, 1, 1) end
+      end
       -- its prop roots: arching out and down
       for r = 1, 4 do
         local d = (r % 2 == 0) and -1 or 1
@@ -115,7 +121,7 @@ return function(K)
     for y = 30, 63, 3 do
       if y > W then
       local d = (y - W) / 22
-      K.dither_row((0.07 + 0.12 * bloom + 0.55 * breath) * (1 - d * 0.5), y, nil, 0, 128)
+      K.dither_row((0.06 + 0.09 * bloom + 0.55 * breath) * (1 - d * 0.5), y, nil, 0, 128)
       end
     end
     local wob = 0.5 + 2.5 * mid
@@ -130,7 +136,7 @@ return function(K)
     K.streaks(2.2 + bloom + breath * 1.4, W, 8, 11, K.drift_x * 0.2)
     -- the near trunks' reflections, broken and wobbling
     for _, x in ipairs(TRUNK) do
-      for d = 2, 14, 3 do put(1.6, x - 1 + sin(T * 1.5 + d + x) * wob * 0.6, W + d, 3, 2) end
+      for d = 2, 14, 3 do K.dash(1.6, x - 1 + sin(T * 1.5 + d + x) * wob * 0.6, W + d, 3, 2) end
     end
     -- the chord's roots: four big arches into the water, their backs lit
     for i = 1, 4 do
@@ -145,11 +151,15 @@ return function(K)
           local u = j / 14
           local xx = x - span + 2 * span * u
           local yy = base - (base - top) * sin(u * math.pi)
-          put(l + (j > 3 and j < 11 and 1.2 or 0) + K.bj(i * 16 + j) * 0.5, xx, yy, 2, 2)
+          -- (at a fraction of a pixel: an arch gliding to its new place
+          -- slides, its pieces never hop)
+          K.dash(l + 1.2 * sin(u * math.pi) + K.bj(i * 16 + j) * 0.5, xx, yy, 2, 2)
           -- (and lying in the water below)
           local ry = 2 * W - yy + 3
           if yy > W + 1 then ry = 99 end
-          if ry < 63 and j % 2 == 0 then put(l * 0.4, xx + sin(T * 1.5 + j) * wob * 0.5, ry, 2, 1) end
+          -- (its wobble shared between columns, so the reflection shivers
+          -- softly instead of flicking a pixel back and forth)
+          if ry < 63 and j % 2 == 0 then K.dash(l * 0.4, xx + sin(T * 1.5 + j) * wob * 0.5, ry, 2) end
         end
       end
     end
@@ -158,7 +168,9 @@ return function(K)
       for k = 0, 20 do
         local x = k * 6 + 2 + sin(T * 1.3 + k) * 2
         local f = sin(T * 2.2 + k * 1.7)
-        put(nat * (3.5 + 3.5 * math.max(0, f)), x, W + (f > 0.5 and 0 or 1), 5, 1)
+        local l = nat * (3.5 + 3.5 * math.max(0, f))
+        local up = K.ramp(f, 0.3, 0.7)
+        put(l * up, x, W, 5, 1); put(l * (1 - up), x, W + 1, 5, 1)
         local g = sin(T * 1.6 + k * 2.3)
         if g > 0 then put(nat * 4 * g, x + 3, W + 3 + (k % 3) * 3, 3, 1) end
       end
