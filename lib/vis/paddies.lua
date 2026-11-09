@@ -132,11 +132,11 @@ return function(K)
         local u = (y - top) / math.max(1, bot - top)
         K.dither_row(sky * 0.28 * (1 - u), y, nil, 0, 128)
       end
-      for y = top + 2, bot - 1, 4 do
+      for y = top + 3, bot - 1, 5 do
         local u = (y - top) / math.max(1, bot - top)
         local l = 1 + sky * 1.3 * (1 - 0.5 * u)
         if sweep > 0 then l = l + sweep * 6 * math.max(0, 1 - abs(y - sy) / 7) end
-        K.streaks(l, y, 4 + k, 21 + k * 3, T * (3.5 + 4 * A[K.AMP]) * (0.5 + k * 0.2) + K.drift_x * 0.1 + y * 13)
+        K.streaks(l, y, 9 + k * 3, 30 + k * 5, T * (5 + 4 * A[K.AMP]) * (0.5 + k * 0.2) + K.drift_x * 0.1 + y * 13)
         if ck > 0.02 then
           local hw = 10 + k * 3
           K.dither_row(math.min(0.6, ck * (1 - u)), y, nil, math.max(0, floor(cxp - hw)), math.min(128, floor(cxp + hw)))
@@ -165,9 +165,11 @@ return function(K)
     for i, r in ipairs(RICE) do
       local sway = sin(T * 0.8 + r[5] + r[1] * 0.03) * (0.5 + 1.8 * lo) * r[4] * 0.35 + K.heave(r[1]) * 0.15 * r[4]
       local l = 2.2 + 0.6 * bloom + r[4] * 0.3 + K.bj(i) * 0.4 + 0.6 * K.energy
-      put(l, r[1], r[2] - r[3] + 1, 1, r[3])
-      put(l * 0.85 + hi * 4 * math.max(0, sin(T * 3.1 + i * 1.7)), r[1] + sway, r[2] - r[3] - 1, 1, 2)
-      if r[4] >= 3 then put(l * 0.8, r[1] + 1 + sway * 0.6, r[2] - r[3], 1, 1) end
+      -- (a tuft: blades fanning up and out from one root)
+      local g = hi * 4 * math.max(0, sin(T * 3.1 + i * 1.7))
+      put(l, r[1], r[2] - 1, 1, 2)
+      put(l * 0.85 + g, r[1] - 1 + sway, r[2] - r[3] - 1, 1, r[3])
+      if r[4] >= 3 then put(l * 0.85, r[1] + 1 + sway, r[2] - r[3], 1, r[3] - 1) end
     end
     K.twinkle(WGLINT, hi, 12)
     -- the water trickling down from terrace to terrace

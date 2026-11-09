@@ -131,7 +131,7 @@ return function(K)
 
   -- the light from above, made once (its strength is set each frame)
   local F_glow = 1
-  local function water(y) local u = (y - SURF) / 30; return F_glow * math.max(0, 1 - u) ^ 2.5 end
+  local function water(y) local u = (y - SURF) / 30; return F_glow * 0.75 * math.max(0, 1 - u) ^ 2.5 end
 
   function M.draw()
     local T = K.T

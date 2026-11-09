@@ -1,5 +1,5 @@
 -- estuary / visuals
--- twelve quiet places on the 128x64 OLED, drawn from what the music is doing
+-- twenty-two quiet places on the 128x64 OLED, drawn from what the music is doing
 -- and from what the engine hears of itself. soft greys, a lot of black,
 -- nothing that flashes the whole screen; the dim levels make the atmosphere
 -- (sky, far shores, mist, water texture) and the brighter ones are kept for
@@ -37,8 +37,11 @@
 
 local VIS = {}
 
+-- (the list only grows at the end: saved psets keep pointing at the same place)
 VIS.names = {"ripples", "horizon", "postcards", "rain", "tide", "drift",
-  "reeds", "koi", "kelp", "fireflies", "mist", "flock", "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies"}
+  "reeds", "koi", "kelp", "fireflies", "mist", "flock",
+  "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies",
+  "echo bridge", "confluence"}
 
 local FPS = 20
 local TAU = 2 * math.pi
@@ -766,9 +769,10 @@ end
 sync({})
 
 -- the themes, each in its own file (include, not require: norns resolves it
--- against the script's folder)
+-- against the script's folder); a name with a space lives in a file with
+-- an underscore ("echo bridge" -> lib/vis/echo_bridge.lua)
 for i, name in ipairs(VIS.names) do
-  THEMES[i] = include("lib/vis/" .. name)(K)
+  THEMES[i] = include("lib/vis/" .. (name:gsub(" ", "_")))(K)
 end
 
 ------------------------------------------------------------------------

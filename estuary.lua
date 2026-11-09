@@ -608,7 +608,9 @@ local function draw_hud()
       sec = sec .. " " .. math.floor(S.progress * 100) .. "%"
     end
     if N.state ~= "idle" then sec = sec .. " ~" end
-    text_box(127, 7, sec, S.playing and 8 or 3, true)
+    -- (held K1 shows the theme's name top left, up to "echo bridge 21/22":
+    -- the section steps aside so the two never overlap)
+    if not k1 then text_box(127, 7, sec, S.playing and 8 or 3, true) end
 
     -- bottom: bloom bar + part lights
     screen.level(0)

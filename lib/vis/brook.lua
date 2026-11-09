@@ -82,13 +82,13 @@ return function(K)
   end)
   -- the bed: pebbles lying still under the water
   local bed = K.bake(function(rec)
-    for k = 1, 34 do
+    for k = 1, 24 do
       local x, y = 2 + 124 * K.hash(k, 207), 15 + 36 * K.hash(k, 208)
       local w = 2 + floor(3 * K.hash(k, 209))
       rec(1, x, y, w, 1)
       if w > 2 then rec(1, x + 1, y + 1, w - 2 > 0 and w - 1 or 1, 1) end
     end
-    for k = 1, 40 do rec(1, 2 + 124 * K.hash(k, 210), 14 + 38 * K.hash(k, 211), 1, 1) end
+    for k = 1, 20 do rec(1, 2 + 124 * K.hash(k, 210), 14 + 38 * K.hash(k, 211), 1, 1) end
   end)
   -- near grass along the bottom, close to you: {x, height, phase}
   local GRASS = {}
@@ -154,8 +154,11 @@ return function(K)
           local a = ry * 3 - abs(dy)
           if a > 0 then d = d + (dy >= 0 and 1 or -1) * a * 0.65 * f end
         end
-        if dx > rx * 0.5 and dy > -ry * 1.6 and dy < ry * 1.6 then
-          local w = 1 - (dx - rx * 0.5) / (rx * 4 + 14)
+        -- (the wake fades in behind the stone and out at its sides: no edge
+        -- for a gliding stone to drag across the dashes)
+        if dx > rx * 0.2 and dy > -ry * 1.6 and dy < ry * 1.6 then
+          local w = (1 - (dx - rx * 0.5) / (rx * 4 + 14)) * math.min(1, (dx - rx * 0.2) / (rx * 0.8))
+            * (1 - abs(dy) / (ry * 1.6)) * p
           if w > wake then wake = w end
         end
       end
@@ -197,13 +200,21 @@ return function(K)
       local hw = rx * math.sqrt(math.max(0, 1 - (dy / (ry + 0.5)) ^ 2)) * (0.85 + 0.25 * K.hash(i * 32 + dy, 228))
       if hw >= 0.5 then
         local l = (dy <= -rows + 1) and top or body
-        put(l + K.bj(i * 16 + dy) * 0.4, x - hw + (K.hash(i * 32 + dy, 229) - 0.5) * 1.2, y + dy, 2 * hw + 1, 1)
+        -- (its edges share their light between columns, so a gliding
+        -- stone slides smoothly instead of a column at a time)
+        local lv = l + K.bj(i * 16 + dy) * 0.4
+        local x0 = x - hw + (K.hash(i * 32 + dy, 229) - 0.5) * 1.2
+        local x1 = x0 + 2 * hw + 1
+        local a, b = math.ceil(x0), floor(x1)
+        if b > a then put(lv, a, y + dy, b - a, 1) end
+        put(lv * (a - x0), a - 1, y + dy, 1, 1)
+        put(lv * (x1 - b), b, y + dy, 1, 1)
       end
     end
     -- its wet crown catching the light, glinting with out_hi, and with a
     -- note near it
     local kk = kick[i]
-    put(top + 1 + hi * 5 * math.max(0, sin(T * 4.3 + i * 2)) + 4 * kk, x - rx * 0.4, y - rows, math.max(1, rx * 0.6), 1)
+    put(math.min(12, top + 1 + hi * 5 * math.max(0, sin(T * 4.3 + i * 2)) + 4 * kk), x - rx * 0.4, y - rows, math.max(1, rx * 0.6), 1)
     if kk > 0.03 then
       put(6 * kk, x - rx * 0.4, y - rows + 1, math.max(1, rx * 1.2), 1)
       put(5 * kk, x - 1, y - rows - 3, 1, 2); put(5 * kk, x - 1, y - rows + 2, 1, 2)
@@ -239,7 +250,7 @@ return function(K)
     stones()
     for i = 1, 4 do kick[i] = K.follow(kick[i], 0, 1.3, K.DT) end
     -- the bed, wavering under the moving surface, and the daylight on it
-    local dl = 0.55 + 0.9 * bloom + 1.9 * breath + 0.4 * K.chord_glow
+    local dl = 0.55 + 0.9 * bloom + 1.9 * breath + 1.6 * K.chord_glow
     for k, d in ipairs(DAPPLE) do
       local x = d[1] + sin(T * 0.13 + d[4]) * 4 + K.heave(d[1]) * 0.6
       local hw = d[3] * (0.8 + 0.2 * sin(T * 0.21 + d[4] * 2))
@@ -288,18 +299,15 @@ return function(K)
           -- (the light glancing off the moving water: out_hi)
           local gl = sin(xc * 0.23 + y0 * 1.3 - T * 1.1) * sin(xc * 0.071 - y0 * 0.4 + T * 0.4)
           if gl > 0.3 then l = l + hi * 5.5 * (gl - 0.3) * 1.6 end
-          l = l * cl
-          if wake > 0 then
-            l = l + wake * (1.5 + 3 * mid)
-            len = len - 1
-          end
-          -- (round a stone the dash bends: drawn as two halves)
-          local d2 = push(x + len, y0)
-          if (d ~= 0 or d2 ~= 0) and len > 3 then
-            local hl = len // 2
-            local da = push(x, y0)
-            put(l, x, y0 + da + hv, hl, 1)
-            put(l, x + hl, y0 + d2 + hv, len - hl, 1)
+          l = math.min(12, l * cl)
+          if wake > 0 then l = l + wake * (1.5 + 3 * mid) end
+          -- (round a stone the dash is pushed aside smoothly: its light is
+          -- shared between the two rows it lies across, so it never hops)
+          if d ~= 0 then
+            local y0f = floor(y)
+            local fy = y - y0f
+            put(l * (1 - fy), x, y0f, len, 1)
+            put(l * fy, x, y0f + 1, len, 1)
           else
             put(l, x, y, len, 1)
           end

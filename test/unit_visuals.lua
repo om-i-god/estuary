@@ -30,9 +30,11 @@ local function mkS()
 end
 
 -- the six v2 themes first, in their old order (saved psets keep pointing at
--- the same theme), then the six v3 ones
+-- the same theme), then the six v3 ones, then the ten v5 ones
 local NAMES = {"ripples", "horizon", "postcards", "rain", "tide", "drift",
-  "reeds", "koi", "kelp", "fireflies", "mist", "flock", "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies"}
+  "reeds", "koi", "kelp", "fireflies", "mist", "flock",
+  "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies",
+  "echo bridge", "confluence"}
 
 local CHORDS = {{48, 55, 62, 64}, {45, 52, 60, 64}, {41, 48, 57, 64}, {43, 50, 59, 62}}
 
@@ -329,7 +331,7 @@ test("visuals brightness param scales", function()
     assert(b > a * 1.5, NAMES[th] .. string.format(": brightness 15 vs 3 = %d vs %d", b, a))
   end
 end)
-test("visuals names: v2 order first, then the v3 themes", function()
+test("visuals names: v2 order first, then the v3 and v5 themes", function()
   env()
   local VIS = include("lib/visuals")
   assert(#VIS.names == #NAMES, #VIS.names .. " themes")
@@ -549,7 +551,7 @@ end
 
 -- incidents: over 20 simulated minutes each place shows at least two kinds
 -- of small happening, one at a time, and rarely. drawn into a counting
--- screen (the raster is too slow for 20 minutes x 12); how they ease in and
+-- screen (the raster is too slow for 20 minutes x 22); how they ease in and
 -- out is measured on the picture by the test after the bar's
 local NULLS = setmetatable({}, {__index = function() return function() end end})
 for th, name in ipairs(NAMES) do
