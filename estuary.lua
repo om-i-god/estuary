@@ -804,6 +804,13 @@ local function setup_params()
   for i = 1, 4 do
     params:add_option("motif" .. i .. "_voice", "motif " .. i .. " voice", VOICE_NAMES, 1)
   end
+  -- everything listening: how far the water, the room (while listening)
+  -- and the music itself move the tone and the space. the notes never
+  -- change; 0 is the plain sound
+  params:add_control("react", "react", controlspec.new(0, 1, "lin", 0.01, 0.5))
+  params:set_action("react", function(v) tweak("react", PAL.react(v)) end)
+  params:add_option("react_src", "react source", PAL.REACT_SOURCES, #PAL.REACT_SOURCES)
+  params:set_action("react_src", function(v) tweak("react_src", PAL.react_src(v)) end)
 
   params:add_separator("LISTEN")
   params:add_option("listen_on", "follow input key", {"off", "on"}, 1)

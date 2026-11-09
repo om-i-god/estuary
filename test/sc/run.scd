@@ -1,6 +1,7 @@
 // compile + smoke-test Engine_Estuary: boot, alloc, fire every command,
 // render ~26 s, report SMOKE / LEVELS / CHECK nature; then sounds.scd
-// (voices, pads, loudness match, palette demos). run via test/sc/run.sh
+// (voices, pads, loudness match, palette demos); then react.scd (the
+// reactive sound, a null test against v2, runaway). run via test/sc/run.sh
 var out = thisProcess.argv[0] ? "/tmp/estuary_test.wav";
 var here = PathName(thisProcess.nowExecutingPath).pathOnly;
 var fix = here +/+ "fixtures/";
@@ -139,6 +140,10 @@ s.waitForBoot {
     ~demoDir = "DEMO_DIR".getenv;
     (here +/+ "sounds.scd").load;
   } { |err| ("ERROR in sounds.scd: " ++ err.errorString).postln };
+  // sounds v3: everything listening (react), the v2 null test, runaway
+  try {
+    (here +/+ "react.scd").load;
+  } { |err| ("ERROR in react.scd: " ++ err.errorString).postln };
   s.quit;
   0.5.wait;
   0.exit;

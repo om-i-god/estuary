@@ -12,7 +12,7 @@ the melodies, pad and pedal can also go out over USB MIDI or crow, each one: **i
 
 **motifs.** four short phrases, each a handful of notes and rests with its own odd-length cycle, so they drift in and out of phase with each other. each note is a step on a ladder of the current chord's own tones laid out close together (in the pentatonic modes only the ones the pentatonic allows; when that leaves fewer than four, a mode tone fills the widest gap), so a step is the next chord tone up or down, a motif stays within about an octave, and the melody always sits inside the harmony. a note held longer than a beat never sits a semitone right above a pad note. now and then a quick neighbour tone passes between two notes. up to three motifs sound at once, and they fade in and out over several bars. the four take turns: the one that has rested longest comes in next, and when the texture is full, every couple of phrases the longest-playing one makes way for one that has rested two phrases. each motif has a voice, chosen by the track's palette (see **sounds** below) or set by hand.
 
-**pad.** a four-note chord that crossfades slowly whenever the harmony moves. it opens up as the bloom rises. it has five characters (see **sounds**); a change of character arrives with the next voicing, crossfaded like any other.
+**pad.** a four-note chord that crossfades slowly whenever the harmony moves. it opens up as the bloom rises. it has eight characters (see **sounds**); a change of character arrives with the next voicing, crossfaded like any other.
 
 **pedal.** a soft low note under the chord. it plays in the middle and upper bloom (not at the very top) and holds the key's tonic through the calm sections, so the chords move above it. it sits at least a 4th below the pad, never a semitone (or a major 7th) from a chord note or a bare tritone under one; when it can't sit clear of a chord, it rests. it is a pure low tone with a soft second harmonic for warmth, a slow gentle swell in its level and a soft 80 ms onset.
 
@@ -44,7 +44,7 @@ the first time estuary loads it sets the norns clock to 72 bpm; after that the t
 
 ## sounds
 
-the instruments are modelled on the gear of 80s environmental music: soft FM electric piano and bells, sine tones, mallets, glassy digital pads and gentle analog strings, all through the same warm echo and hall. nothing is distorted, every note starts softly (no clicks), and at the same velocity and brightness every voice is equally loud, so any palette sits in the same mix. brightness changes the tone (more FM index, harder mallet, more upper partials), not the level.
+the instruments are modelled on the gear of 80s environmental music: soft FM electric piano and bells, sine tones, mallets, plucked strings, a soft voice, glassy digital pads and gentle analog strings, all through the same warm echo and hall. nothing is distorted, every note starts softly (no clicks), and at the same velocity and brightness every voice is equally loud, so any palette sits in the same mix. brightness changes the tone (more FM index, harder mallet, more upper partials), not the level.
 
 **motif voices** (PARAMS > SOUND > motif 1-4 voice):
 - **rhodes:** a DX-style FM electric piano. a warm body with a short bell-like tine ping on top, harder and brighter with velocity, a gentle stereo tremolo; high notes fade a little sooner.
@@ -56,6 +56,15 @@ the instruments are modelled on the gear of 80s environmental music: soft FM ele
 - **kalimba:** a soft thumb pluck with the tine's brief inharmonic shimmer leaning to one side.
 - **flute:** a breathy pan flute or ocarina. a sine core with soft harmonics, a gentle chiff, quiet breath and late vibrato; it holds for the length of the note.
 - **glass:** a glass harmonica. a slow swell to a pure tone with a faint shine growing in and a slow shimmer.
+- **harp:** a soft pluck on a long-ringing string; its upper harmonics fade first and open slightly across the speakers.
+- **koto:** a gentle pluck that starts a hair sharp and settles onto the note in a moment, with a soft nasal attack and no twang.
+- **choir:** a soft "ooh": a rounded vowel that swells in slowly, with a late vibrato and a slow shimmer between the speakers. it holds for the length of the note.
+- **glock:** a small, soft glockenspiel. rounder than the celesta: mostly fundamental, with the bar's bright overtones kept low and short, and a long tail that turns slowly between the speakers.
+- **piano:** a soft felt piano, synthesised rather than sampled: a slightly stiff string that rings out after a softer prompt sound, a second string turning slowly in the stereo field, and a felt thump. the damper comes down a little after the note.
+- **dulcimer:** a hammered dulcimer played softly: a quick felt hammer on a pair of strings whose gentle shimmer turns between the speakers.
+- **steelpan:** a soft, round steel pan. a mellow mallet with the octave blooming in just after the strike, never clangy.
+- **guitar:** a warm nylon-string pluck, fingered a fifth of the way along the string, with a breath of finger noise.
+- **horn:** a soft 80s analog brass voice: a filtered saw whose filter swells open after a slow-ish onset and settles, with a little chorus on one side. it holds for the length of the note and never blares.
 
 **pad characters** (PARAMS > SOUND > pad sound):
 - **warm:** triangle and sine with a soft sub, each note drifting and breathing slowly under a moving low-pass.
@@ -63,8 +72,11 @@ the instruments are modelled on the gear of 80s environmental music: soft FM ele
 - **glass:** a digital FM pad with a gentle double-octave shimmer that comes and goes on each note.
 - **air:** a breathy choir: noise tuned to each note and its octave over a quiet sine core.
 - **organ:** soft sine drawbars, each note swaying slowly like a rotor.
+- **shimmer:** a soft core with a halo an octave up that arrives slowly after the chord and breathes on each note, mirrored across the stereo field.
+- **tape:** warm and rounded, with a little low-end bump and a very slow drift of about two cents that moves every note together, like tape speed. it never beats sour.
+- **reed:** a soft harmonium: gently filtered reeds with the bellows breathing slowly in the level.
 
-**palettes.** a palette is one record's worth of sound: a voice for each motif, a pad character, and a small lean in brightness and echo/reverb. with **palette** on **auto**, every new track picks one: the choice is seeded, but steered away from the palette just played, so the same one never comes twice in a row (rebuilding the same seed keeps it). pick a name to pin it: it applies at once and on every new track after. **motif voice** and **pad sound** on **auto** follow the palette; set them by name to override it.
+**palettes.** a palette is one record's worth of sound: a voice for each motif, a pad character, and a small lean in brightness and echo/reverb. with **palette** on **auto**, every new track picks one: the choice is seeded, and every palette comes round once before any comes again, favouring the ones whose voices you haven't heard yet, so the same one never comes twice in a row (rebuilding the same seed keeps it). pick a name to pin it: it applies at once and on every new track after. **motif voice** and **pad sound** on **auto** follow the palette; set them by name to override it.
 
 | palette | motif 1 | motif 2 | motif 3 | motif 4 | pad |
 |---|---|---|---|---|---|
@@ -77,8 +89,26 @@ the instruments are modelled on the gear of 80s environmental music: soft FM ele
 | veranda | rhodes | vibes | flute | celesta | strings |
 | mist | sine | glass | flute | bell | air |
 | atrium | rhodes | celesta | vibes | glass | organ |
+| lantern | piano | glock | choir | celesta | shimmer |
+| teahouse | koto | dulcimer | flute | glock | tape |
+| chapel | choir | bell | harp | glass | shimmer |
+| orchard | harp | glock | guitar | koto | reed |
+| parlour | piano | vibes | horn | celesta | tape |
+| lagoon | steelpan | harp | piano | glock | air |
+| boathouse | guitar | dulcimer | piano | harp | reed |
+| sandbar | koto | steelpan | choir | guitar | shimmer |
+| promenade | horn | steelpan | rhodes | dulcimer | strings |
+| cloister | choir | dulcimer | horn | bell | glass |
+| courtyard | horn | steelpan | guitar | koto | tape |
 
 motifs 2 and 4 play an octave above 1 and 3, so the small high voices sit there. the new voices live in the engine: after updating, run **SYSTEM > RESTART** once before loading the script. saved psets keep their voices (the old choices keep their positions in every list).
+
+**react: everything listening.** the notes never change, but the sound listens and leans with what it hears. **react** (PARAMS > SOUND, 0-1, default 0.5) sets how far; **react source** picks what it listens to: **water**, **room**, **self** or **all** (the default).
+- **water:** as the field recordings swell, the music brightens with them: new notes come in a little brighter, the pad's filter opens, and the reverb send widens, so the set breathes with the tide. as the water falls back, so does the shine.
+- **room:** while **LISTEN > follow input key** is on, the level coming into the norns inputs tilts the notes a little brighter and lengthens the echo slightly, so the set leans into a lively room. when listening stops it lets go.
+- **self:** under busy motif passages the pad dips gently (under 3 dB at the full depth), and in sparse passages the reverb opens out a little. it listens to the motif voices' dry sound (before echo and reverb), not the whole output, so neither the pad's dip nor the wider reverb can feed back into what it hears.
+
+every change moves slowly (it rises over a second or so and settles back over several), so nothing pumps. each one has a ceiling, and the engine measures each source upstream of anything react changes, so nothing can run away, even with a microphone hearing the speakers. at 0 the sound is exactly as it was before react existed. after updating, run **SYSTEM > RESTART** once: react lives in the engine.
 
 ---
 
@@ -134,7 +164,7 @@ screen: key and mode top left with the chord below, section top right (with `~` 
 - **MIX:** space (echo + reverb), tone, echo time (1/8, 1/4, 3/8, 1/2), echo feedback (held to 0.6 at 1/8), reverb size, level
 - **NATURE:** bed level, swell level, moments (off / rare / some), moment level, nature tone
 - **LEVELS:** motif level, pad level, pedal level
-- **SOUND:** palette (auto, or pin one by name), pad sound (auto, warm, strings, glass, air, organ), motif 1-4 voice (auto, rhodes, bell, sine, marimba, vibes, celesta, kalimba, flute, glass); auto follows the palette
+- **SOUND:** palette (auto, or pin one by name), pad sound (auto, warm, strings, glass, air, organ, shimmer, tape, reed), motif 1-4 voice (auto, rhodes, bell, sine, marimba, vibes, celesta, kalimba, flute, glass, harp, koto, choir, glock, piano, dulcimer, steelpan, guitar, horn); auto follows the palette. react (0-1), react source (water / room / self / all)
 - **LISTEN:** follow input key, input gate (dB), hold before move (s)
 - **MOTIF OUT / PAD OUT / PEDAL OUT:** output (internal / midi / both), midi device, midi channel (defaults: motifs ch 3, pad ch 2, pedal ch 1)
 - **MOTIF OUT > motifs to midi:** all four on one channel, a single motif (for a mono synth: the others keep playing on norns), or each motif on its own channel. velocity follows the part's fade and the note length follows the note
@@ -201,7 +231,7 @@ then put the recordings in place: run `tools/fetch_placeholders.sh` first if `au
 - `lua test/unit.lua test/unit_*.lua` runs the unit tests (run from the repo root). `test/unit_visuals.lua` draws every theme through silence, a mid texture, a peak and a swell into the rasterizer, and checks how much of the screen is lit, frame-to-frame change, the draw-call budget, NaN, motion at silence, reaction to the top and low bands, and bad input. a reactivity matrix checks that every theme visibly answers each input on its own (a note, a chord change, the bar, a bloom ramp, a swell, a moment and each of the five polls), that the four motifs leave different marks and that low and high notes land in different places, and a 20-minute run checks each theme's small happenings: at least two kinds, one at a time, each easing in and out. `VISREPORT=1` prints its numbers.
 - `lua test/rules_selftest.lua` checks the music-rules checker itself.
 - `lua test/sim.lua [bars] [mode 1=set 2=track] [minutes] [tempo]` runs the script headless against stubbed norns APIs, prints the arc every 100 bars, and ends with `RULES ok` or a list of rule violations (exit 1). examples: `lua test/sim.lua 2160 1` (two hours of set), `lua test/sim.lua 900 2 12` (a 12-minute track), `lua test/sim.lua 900 2 4` (several short tracks: also checks that more than one palette's voices get heard). `MUTES=1` toggles random mutes and solos each bar, `HKEY=1` makes random hand key and mode changes, `RESTART=1` sets track end to stop and restarts after each stop, `SEED=n` replays a run, `SNAP=dir` renders each visual theme to a PGM in `dir` through a small rasterizer (`test/raster.lua`), plus `_still` (the engine's ears silent), `_loud` (ears pinned) and `_incident` (one of its small happenings) versions. the sim feeds fake output polls from the music every 8th.
-- `test/sc/run.sh` compiles `lib/Engine_Estuary.sc` against a stub CroneEngine, boots a local SuperCollider server, fires every command (including a nature load and play in the same tick for each slot), checks the output polls (`out_amp` rises with a note and falls back after its tail; `nat_amp` rises with nature) and renders a wav. then `test/sc/sounds.scd` plays every motif voice (3 pitches x 3 brightnesses) and every pad character alone, prints their RMS and peak, checks no NaN, no clipping, soft onsets and that voices (and pads) sit within 3 dB of each other, checks a pad-character change crossfades, and renders a demo wav per palette to `$DEMO_DIR` (default `$TMPDIR/estuary_demos`). it exits 1 if any check fails (needs SuperCollider.app on the Mac).
+- `test/sc/run.sh` compiles `lib/Engine_Estuary.sc` against a stub CroneEngine, boots a local SuperCollider server, fires every command (including a nature load and play in the same tick for each slot), checks the output polls (`out_amp` rises with a note and falls back after its tail; `nat_amp` rises with nature) and renders a wav. then `test/sc/sounds.scd` plays every motif voice (3 pitches x 3 brightnesses) and every pad character alone, prints their RMS and peak, checks no NaN, no clipping, soft onsets and that voices (and pads) sit within 3 dB of each other, checks a pad-character change crossfades, and renders a demo wav per palette to `$DEMO_DIR` (default `$TMPDIR/estuary_demos`). then `test/sc/react.scd` checks react: at 0 every nudge is neutral with every source pushed to the top; a null test renders the v2 engine (taken from git at `$V2_REF`) and this one from the same score in non-realtime with the same random seed, and they must cancel at react 0 and differ at 0.8; at 0.8 loud water must raise the share of energy above 2.5 kHz and widen the reverb send, the room must only count while listening, busy motifs must duck the pad by 2-3 dB at most and slowly; and 60 s with everything at max and the output fed back into the input must stay bounded. it renders a react demo (one palette under a water swell, at react 0 and 0.8) next to the palette demos. it exits 1 if any check fails (needs SuperCollider.app on the Mac and git).
 
 ## license
 

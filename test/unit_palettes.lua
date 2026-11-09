@@ -51,7 +51,7 @@ test("palettes: old psets keep their voices (option order only grows)", function
 end)
 
 test("palettes: every palette is well formed", function()
-  assert(#P.PALETTES >= 6 and #P.PALETTES <= 10, "6-10 palettes")
+  assert(#P.PALETTES >= 16 and #P.PALETTES <= 22, "16-22 palettes")
   local names, used_v, used_p = {}, {}, {}
   for i, p in ipairs(P.PALETTES) do
     assert(not names[p.name], "duplicate palette " .. p.name)
@@ -84,13 +84,12 @@ end)
 
 test("palettes: choice is seeded and leaves math.random alone", function()
   for seed = 1, 200 do
-    eq(P.choose(seed, nil), P.choose(seed, nil), "same seed")
-    eq(P.choose(seed, 3), P.choose(seed, 3), "same seed + last")
+    eq(P.for_track({}, seed), P.for_track({}, seed), "same seed")
+    eq(P.for_track({palette = 3}, seed), P.for_track({palette = 3}, seed), "same seed + last")
   end
   math.randomseed(42)
   local a = {math.random(), math.random()}
   math.randomseed(42)
-  P.choose(1234, 2)
   P.for_track({}, 99)
   local b = {math.random(), math.random()}
   eq(a[1], b[1], "random stream"); eq(a[2], b[2], "random stream")
@@ -112,7 +111,7 @@ test("palettes: a new track never repeats the last palette, and all appear", fun
   end
   -- even the worst case: every seed, from every last palette
   for seed = 1, 9999, 13 do
-    for last = 1, #P.PALETTES do assert(P.choose(seed, last) ~= last, "choose repeated") end
+    for last = 1, #P.PALETTES do assert(P.for_track({palette = last}, seed) ~= last, "repeated the last palette") end
   end
 end)
 
@@ -161,4 +160,88 @@ test("palettes: the conductor picks one per new track", function()
   S.palette_pin = 2
   C.new_track(S, 13, false)
   eq(S.palette, 2, "pinned")
+end)
+
+test("palettes: v2 psets keep their voices, pads and palettes (lists only grow)", function()
+  -- sounds v2 stored these option indices; v3 appends after them
+  local v2_voices = {"auto", "rhodes", "bell", "sine", "marimba", "vibes", "celesta", "kalimba", "flute", "glass"}
+  local v2_pads = {"auto", "warm", "strings", "glass", "air", "organ"}
+  local v2_pals = {"auto", "harbor", "shallows", "glasshouse", "morning", "riverbank", "tidepool", "veranda", "mist", "atrium"}
+  local nv = {"auto", table.unpack(P.VOICES)}
+  local np = {"auto", table.unpack(P.PADS)}
+  local nl = {"auto", table.unpack(P.NAMES)}
+  for i, n in ipairs(v2_voices) do eq(nv[i], n, "voice option " .. i) end
+  for i, n in ipairs(v2_pads) do eq(np[i], n, "pad option " .. i) end
+  for i, n in ipairs(v2_pals) do eq(nl[i], n, "palette option " .. i) end
+  local defs, pdefs = engine_list("voiceDefs"), engine_list("padDefs")
+  for i = 2, #v2_voices do eq(defs[P.motif_voice(i, 1, 1)], "est_" .. v2_voices[i], "engine voice for option " .. i) end
+  for i = 2, #v2_pads do eq(pdefs[P.pad_sound(i, 1)], "est_pad_" .. v2_pads[i], "engine pad for option " .. i) end
+  -- a pinned v2 palette is still the same record
+  local S = {}
+  P.pin(S, 1 + 3)
+  eq(P.NAMES[P.for_track(S, 77)], "glasshouse", "pinned v2 palette")
+end)
+
+test("palettes: v3 adds the new voices, pads and palettes, none named like a visual theme", function()
+  for _, v in ipairs({"harp", "koto", "choir", "glock", "piano", "dulcimer", "steelpan", "guitar", "horn"}) do P.voice_index(v) end
+  for _, v in ipairs({"shimmer", "tape", "reed"}) do P.pad_index(v) end
+  assert(#P.VOICES >= 18, "at least 18 voices")
+  local themes = {"ripples", "horizon", "postcards", "rain", "tide", "drift", "reeds", "koi", "kelp", "fireflies",
+                  "mist", "flock", "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies"}
+  local clash = {}
+  for _, t in ipairs(themes) do clash[t] = true end
+  for i = 10, #P.PALETTES do
+    assert(not clash[P.PALETTES[i].name], "palette " .. P.PALETTES[i].name .. " is a visual theme's name")
+  end
+  -- every new voice is in at least four palettes, so a run of tracks hears it
+  local count = {}
+  for _, p in ipairs(P.PALETTES) do for _, v in ipairs(p.voices) do count[v] = (count[v] or 0) + 1 end end
+  for i = 10, #P.VOICES do assert((count[P.VOICES[i]] or 0) >= 4, P.VOICES[i] .. " in fewer than 4 palettes") end
+end)
+
+test("palettes: every palette comes round once a round (three full rounds), every voice soon", function()
+  local n = #P.PALETTES
+  for start = 1, 40 do
+    local S, prev = {}, nil
+    for round = 1, 3 do
+      local seen, voices = {}, {}
+      for k = 1, n do
+        local pal = P.for_track(S, start * 1000 + round * 100 + k)
+        assert(not seen[pal], "palette " .. pal .. " twice in round " .. round .. " (start " .. start .. ")")
+        assert(pal ~= prev, "back to back across round " .. round)
+        seen[pal], prev = true, pal
+        for _, v in ipairs(P.PALETTES[pal].voices) do voices[v] = true end
+        if k == 10 and round == 1 then
+          for _, v in ipairs(P.VOICES) do assert(voices[v], v .. " not heard in 10 tracks (start " .. start .. ")") end
+        end
+      end
+      for i = 1, n do assert(seen[i], "palette " .. i .. " skipped in round " .. round .. " (start " .. start .. ")") end
+    end
+  end
+end)
+
+test("palettes: the same history and seeds give the same palettes", function()
+  local a, b = {}, {}
+  for k = 1, 50 do eq(P.for_track(a, k * 31), P.for_track(b, k * 31), "track " .. k) end
+end)
+
+test("palettes: react params map to the engine (depth clamped, source 1-4)", function()
+  eq(P.react(0), 0, "react 0"); eq(P.react(0.5), 0.5, "react 0.5"); eq(P.react(1), 1, "react 1")
+  eq(P.react(-1), 0, "react low"); eq(P.react(3), 1, "react high"); eq(P.react(nil), 0, "react nil")
+  eq(#P.REACT_SOURCES, 4, "four sources")
+  local want = {water = 1, room = 2, self = 3, all = 4}
+  for i, n in ipairs(P.REACT_SOURCES) do eq(P.react_src(i), want[n], n) end
+  eq(P.react_src(0), 1, "src low"); eq(P.react_src(9), 4, "src high"); eq(P.react_src(nil), 4, "src nil = all")
+  -- the engine knows the tweak keys, and the script sends them
+  local f = assert(io.open("lib/Engine_Estuary.sc"))
+  local src = f:read("a")
+  f:close()
+  assert(src:find("\\react %-> %[\\react, \\react%]"), "engine: no react tweak")
+  assert(src:find("\\react_src %-> %[\\react, \\src%]"), "engine: no react_src tweak")
+  f = assert(io.open("estuary.lua"))
+  local es = f:read("a")
+  f:close()
+  assert(es:find('params:add_control%("react", "react", controlspec.new%(0, 1, "lin", 0.01, 0.5%)%)'), "react param")
+  assert(es:find('params:add_option%("react_src", "react source", PAL.REACT_SOURCES, #PAL.REACT_SOURCES%)'), "react source param")
+  assert(es:find('tweak%("react", PAL.react%(v%)%)') and es:find('tweak%("react_src", PAL.react_src%(v%)%)'), "react tweaks")
 end)

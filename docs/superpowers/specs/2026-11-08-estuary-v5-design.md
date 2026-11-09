@@ -74,6 +74,7 @@ The music's notes stay exactly as they are; `test/rules.lua` and each seed's mus
 - **The water.** Loudness of the field recordings (`nat_amp`, already measured) gently opens the pad's filter and the motif brightness, and widens the reverb send. When water swells, the music brightens and breathes with it.
 - **The room.** When live input listening is on, the input level (`in_amp`) gently tilts brightness and echo feedback, so the set leans into the room.
 - **Itself.** The engine's own output energy (out_amp/out_lo) drives a slow, gentle ducking of the pad under busy motif passages (sidechain-like but very soft, around 2–3 dB at most), and opens the reverb in sparse passages.
+- Build note: the `self` follower is taken from the dry motif bus (the motif voices before echo and reverb) rather than out_amp, so the pad duck and the reverb opening can never feed back into their own measurement.
 - All of this is done with control-rate followers inside the engine, which is cheap: slow attack (≥0.3 s) and slow release (≥1.5 s). No audible pumping and no feedback runaway: the analysis feeding a modulation must be taken from a point the modulation cannot amplify without bound, or be clamped.
 - New params in SOUND:
   - `react`: depth, 0..1, default about 0.5
