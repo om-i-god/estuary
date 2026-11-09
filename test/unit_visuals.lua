@@ -651,8 +651,36 @@ end)
 -- changes the picture clearly while it is fully there, and the light it adds
 -- never jumps by more than ~25% of its peak in one frame (its parts ease in
 -- and out, and swap shapes by crossfading)
+-- and nothing pops while they last: the same run with and without a
+-- moment and a note in each slot, compared frame by frame over the whole
+-- moment (~16 s), in the steady scene the incidents use. what the events add to the picture may move and change,
+-- but never jump by more than POP_K typical frames' change in one frame (a
+-- light that wraps round, a band that steps a row, a mark drawn at full on
+-- its first frame). POP_K is loose enough for wings beating and a school
+-- re-forming, tight enough to catch a canopy lighting in one frame
+local POP_K = 8
+local function pop_step(a, b, f0, f1)
+  local worst, wf = 0, f0
+  for f = f0 + 1, f1 do
+    local fa, fb, pa, pb = a[f], b[f], a[f - 1], b[f - 1]
+    local s = 0
+    for p = 0, 8191 do
+      local x = (fa[p] - fb[p]) - (pa[p] - pb[p])
+      s = s + (x < 0 and -x or x)
+    end
+    s = s / 8192
+    if s > worst then worst, wf = s, f end
+  end
+  return worst, wf
+end
+local function frame_median(fr, f0, f1)
+  local d = {}
+  for i = f0, f1 do d[#d + 1] = bufdiff(fr[i - 1], fr[i]) end
+  table.sort(d)
+  return d[#d // 2 + 1]
+end
 local IF = 640                    -- frames per incident run (32 s: the longest is ~30)
-local function inc_run(th, k)
+local function inc_run(th, k, at)
   env()
   local V = include("lib/visuals"); V.init()
   local S = mkS(); S.bloom = 0.5; S.section = "flow"
@@ -664,6 +692,7 @@ local function inc_run(th, k)
     t = t + 1 / FPS
     while t >= next_step do S.step = S.step + 1; next_step = next_step + 60 / S.tempo / 2 end
     if k and f == 20 then V._incident(k) end
+    if at then at(f, V) end
     for nm, x in pairs(BASE_EARS) do V.audio(nm, x) end
     screen.clear(); V.draw(th, S, 1 / FPS)
     frames[f] = copybuf()
@@ -676,6 +705,7 @@ local INC_SEEN = 0.015
 for th, name in ipairs(NAMES) do
   test("visuals " .. name .. " incidents show", function()
     local base, _, V = inc_run(th)
+    local bmed = frame_median(base, 22, IF)
     local list = V._probe().kinds
     assert(list and #list >= 2, "fewer than 2 kinds of incident")
     local fails = {}
@@ -697,11 +727,29 @@ for th, name in ipairs(NAMES) do
         prev = s
       end
       local seen = d / math.max(1, n)
+      -- (and nothing in it jumps from one frame to the next: see POP_K)
+      local pstep, pf = pop_step(frames, base, 21, IF)
+      if pstep > POP_K * math.max(bmed, 0.01) then fails[#fails + 1] = string.format("%s jumps %.4f at frame %d (median %.4f)", list[i], pstep, pf, bmed) end
       if REPORT then print(string.format("incshow %-10s %-10s seen %.4f step %.4f peak %.4f ratio %.2f", name, list[i], seen, step, peak, step / math.max(peak, 1e-9))) end
       if seen <= INC_SEEN then fails[#fails + 1] = string.format("%s barely shows (%.4f)", list[i], seen) end
       if step > 0.25 * peak then fails[#fails + 1] = string.format("%s pops (%.4f in a frame vs a peak of %.4f)", list[i], step, peak) end
     end
     assert(#fails == 0, table.concat(fails, "; "))
+  end)
+end
+
+for th, name in ipairs(NAMES) do
+  test("visuals " .. name .. " moment and notes never pop", function()
+    local ON = 40
+    local quiet = inc_run(th)
+    local ev = inc_run(th, nil, function(f, V)
+      if f == ON then V.event("moment", "passing") end
+      for s = 1, 4 do if f == ON + 10 + s * 20 then V.event("note", s, 60 + s * 5, 1.5) end end
+    end)
+    local med = frame_median(quiet, 22, IF)
+    local step, f = pop_step(ev, quiet, ON - 1, IF)
+    if REPORT then print(string.format("pop %-10s median %.4f worst %.4f at +%d (x%.1f)", name, med, step, f - ON, step / math.max(med, 0.01))) end
+    assert(step <= POP_K * math.max(med, 0.01), string.format("a %.4f jump %d frames after the moment vs a median of %.4f", step, f - ON, med))
   end)
 end
 

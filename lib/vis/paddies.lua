@@ -21,14 +21,39 @@ return function(K)
 
   M.incidents = {{"egret", 18}, {"farmer", 24}, {"frogs", 12}}
 
-  local MARK_MAX = 7
+  local MARK_MAX = 6
   local marks
   -- the bunds: the edge at the top of each terrace (k = 1 the furthest)
-  local BASE = {13, 21, 31, 44}
+  -- (contours round the hill: each bund arcs up over the hill's shoulder
+  -- toward you, more so for the nearer terraces, with a hand-made wobble)
+  local BASE = {15, 25, 36, 50}
+  local ARC = {3.5, 5, 7, 9}
   local BUND = {}
   for k = 1, 4 do
     BUND[k] = K.profile(function(x)
-      return BASE[k] + (1 + k * 0.6) * sin(x * (0.035 - k * 0.003) + k * 1.3) + (0.5 + k * 0.3) * sin(x * 0.09 + k * 2.1)
+      local u = (x - 58) / 74
+      return BASE[k] - ARC[k] * (1 - u * u) + (0.6 + k * 0.25) * sin(x * 0.07 + k * 2.1) + 0.6 * sin(x * 0.19 + k)
+    end)
+  end
+  -- the mirrors: the sky's light lying along each terrace just under its
+  -- far bund, following its curve; baked once, merged into runs
+  local MIRROR = {}
+  for k = 1, 4 do
+    MIRROR[k] = K.bake(function(rec)
+      for line = 1, 2 do
+        local off, keep = line * 2, line == 1 and 0.8 or 0.45
+        local run, ry, n = nil, nil, 0
+        for c = 0, 64 do
+          local y = c < 64 and floor(BUND[k][c] + off + 0.5) or -1
+          local on = c < 64 and K.hash(c * 8 + k * 64 + line, 910) < keep
+          if run and (y ~= ry or not on or c - run >= 10) then
+            n = n + 1
+            rec((line == 1 and 1.3 or 0.9) + K.hash(n + k * 40, 911) * 0.3, run * 2, ry, (c - run) * 2, 1)
+            run = nil
+          end
+          if on and not run then run, ry = c, y end
+        end
+      end
     end)
   end
   -- the bottom of terrace k: the next bund, or the screen's edge
@@ -67,7 +92,7 @@ return function(K)
   for k = 1, 4 do
     local rows = (k + 1) // 2
     for r = 1, rows do
-      local n = 5 + k * 2
+      local n = 3 + k * 2
       for j = 1, n do
         local x = (j - 0.5 + 0.35 * (K.hash(j * 9 + r, 905 + k) - 0.5)) / n * 128 + (r % 2) * 64 / n
         local top = K.at(BUND[k], x) + 2
@@ -124,39 +149,50 @@ return function(K)
       local m, p = K.chord_at(5 - k)
       local cxp = m and K.cx(m) or 64
       local ck = m and p * (0.5 + (m - 36) / 40) * (1 + 1.5 * K.chord_glow) or 0
-      local top = BASE[k] + 2
-      local bot = k < 4 and BASE[k + 1] or 63
-      -- (the sky's light lies near the terrace's far edge; below it, a few
-      -- slow streaks of cloud drifting in the mirror)
-      for y = top, math.min(bot, top + 3), 2 do
-        local u = (y - top) / math.max(1, bot - top)
-        K.dither_row(sky * 0.28 * (1 - u), y, nil, 0, 128)
+      local B = BUND[k]
+      -- (the sky lying in the mirror along the far bund)
+      K.blit(MIRROR[k], sky * (1.1 - k * 0.08))
+      -- slow clouds drifting in the mirror, following the terrace's curve
+      local v = (5 + 4 * A[K.AMP]) * (0.5 + k * 0.2)
+      local depth = 3 + k * 1.5
+      for j = 0, 2 do
+        local x0 = (j * 47 + k * 31 + T * v + K.drift_x * 0.1) % 160 - 20
+        local len = 9 + k * 3
+        local l = 1 + sky * 1.3
+        for q = 0, len - 1, 4 do
+          local x = x0 + q
+          local fe = math.min(1, (q + 2) / 4, (len - q) / 4)
+          if x >= 0 and x < 128 then put(l * fe + K.bj(j + k * 8 + q) * 0.4, x, K.at(B, x) + depth, 4, 1) end
+        end
       end
-      for y = top + 3, bot - 1, 5 do
-        local u = (y - top) / math.max(1, bot - top)
-        local l = 1 + sky * 1.3 * (1 - 0.5 * u)
-        if sweep > 0 then l = l + sweep * 6 * math.max(0, 1 - abs(y - sy) / 7) end
-        K.streaks(l, y, 9 + k * 3, 30 + k * 5, T * (5 + 4 * A[K.AMP]) * (0.5 + k * 0.2) + K.drift_x * 0.1 + y * 13)
-        if ck > 0.02 then
-          local hw = 10 + k * 3
-          K.dither_row(math.min(0.6, ck * (1 - u)), y, nil, math.max(0, floor(cxp - hw)), math.min(128, floor(cxp + hw)))
-          put(1.5 + ck * 3 + K.bj(y + k) * 0.4, cxp - hw * 0.4, y, hw * 0.8, 1)
+      -- the chord's light lying across the terrace, along its curve
+      if ck > 0.02 then
+        local hw = 10 + k * 3
+        for x = floor((cxp - hw) / 4) * 4, cxp + hw, 4 do
+          local f = 1 - abs(x - cxp) / hw
+          if f > 0 and x >= 0 and x < 128 then
+            local y = K.at(B, x)
+            put((1.2 + ck * 4.5) * f + K.bj(x + k) * 0.4, x, y + 2 + (x // 4) % 2, 4, 1)
+          end
+        end
+      end
+      -- (and when a moment passes, the band of sunlight lights this terrace's
+      -- mirror where it crosses)
+      if sweep > 0 then
+        for x = 0, 126, 8 do
+          local y = K.at(B, x) + depth - 1
+          local l = sweep * math.max(0, 8 - abs(y - sy) * 0.9)
+          if l > 0.05 then put(l + K.bj(x + k * 3) * 0.4, x, y, 5, 1) end
         end
       end
       -- cat's paws: short bright ripples where the wind touches the water
       if mid > 0.04 then
         for j = 0, 7 do
           local x = (j * 19 + T * (3 + k) + k * 17) % 140 - 6
-          local y = top + 1 + (bot - top - 2) * ((j * 0.37 + k * 0.21) % 1)
+          local yb = K.at(B, x)
+          local y = yb + 2 + (bottom(k, x) - yb - 4) * ((j * 0.37 + k * 0.21) % 1)
           local w = math.max(0, sin(T * 0.6 + j * 1.3 + k))
           if w > 0.1 then put(mid * 7 * w + K.bj(j + k * 8) * 0.4, x, y, 4 + k, 1) end
-        end
-      end
-    end
-    if sweep > 0 then
-      for y = floor(sy / 2) * 2 - 2, floor(sy / 2) * 2 + 2, 2 do
-        if y > 10 and y < 64 then
-          K.streaks(sweep * (6 - abs(y - sy) * 0.6), y, 7, 18, y * 7 + T * 2)
         end
       end
     end
@@ -180,7 +216,8 @@ return function(K)
           local u = ((T * 1.5 + q * 0.25 + i * 0.13) % 1)
           put(nat * (7 - u * 3), s[1] + sin(u * 3 + i) * 0.5, y0 - 1 + u * 4, 2, 2)
         end
-        K.ring(s[1], y0 + 4, 1.5 + ((T * 2 + i) % 1) * 3, 0.4, nat * 4, 10)
+        local rr = (T * 2 + i) % 1
+        K.ring(s[1], y0 + 4, 1.5 + rr * 3, 0.4, nat * 5 * (1 - rr) * ease(rr / 0.15), 10)
       end
     end
     -- the notes' ripples
@@ -195,18 +232,18 @@ return function(K)
         local s = 0.6 + mk.k * 0.2
         local x, y = mk.x, mk.y
         if mk.slot == 1 then
-          K.ring(x, y, (1.5 + age * 5) * s, sq, 8 * e, 18)
+          K.ring(x, y, (1.5 + age * 5) * s, sq, 8 * e, 13)
         elseif mk.slot == 2 then
-          K.ring(x, y, (2 + age * 8) * s, sq, 7 * e, 22)
-          K.ring(x, y, (1 + age * 5) * s, sq, 6 * e, 14)
+          K.ring(x, y, (2 + age * 8) * s, sq, 7 * e, 15)
+          K.ring(x, y, (1 + age * 5) * s, sq, 6 * e, 9)
           put(7 * e, x - 1, y - 2, 3, 1); put(7 * e, x, y - 3, 1, 3)
         elseif mk.slot == 3 then
-          K.ring(x, y, (1.5 + age * 4.5) * s, sq, 7.5 * e, 16)
+          K.ring(x, y, (1.5 + age * 4.5) * s, sq, 7.5 * e, 12)
           if age < 0.6 then put(9 * e * sin(age / 0.6 * math.pi), x, y - sin(age / 0.6 * math.pi) * 5 * s, 1, 1) end
         else
           for q = 0, 3 do
             local a = q * 1.7
-            K.ring(x + cos(a) * 4 * s, y + sin(a) * 1.5, (1 + age * 2.5) * s, sq, 6.5 * e, 10)
+            K.ring(x + cos(a) * 4 * s, y + sin(a) * 1.5, (1 + age * 2.5) * s, sq, 6.5 * e, 7)
           end
         end
         put(4 * e, x - 1, y, 3, 1)
@@ -217,10 +254,11 @@ return function(K)
       for q = 0, 13 do
         local x = (q * 9.3 + T * 4) % 128
         local y = (q * 11 + T * 40) % 60 + 2
-        put(sw * 5 + K.bj(q) * 0.4, x - y * 0.1, y, 1, 4)
+        -- (each drop fades in at the top and out at the bottom, never a jump)
+        put((sw * 5 + K.bj(q) * 0.4) * clamp(math.min(y - 2, 62 - y) / 8, 0, 1), x - y * 0.1, y, 1, 4)
         local rr = (T * 1.5 + q * 0.37) % 1
         local ry = 16 + (q * 17) % 46
-        if q % 3 == 0 then K.ring((q * 29) % 124 + 2, ry, 1 + rr * 4, 0.3, sw * 4.5 * (1 - rr), 8) end
+        if q % 3 == 0 then K.ring((q * 29) % 124 + 2, ry, 1 + rr * 4, 0.3, sw * 4.5 * (1 - rr) * ease(rr / 0.15), 8) end
       end
     end
     -- incidents
@@ -257,8 +295,9 @@ return function(K)
         for q, f in ipairs(FROG) do
           local t = (inc.age * 0.45 + f[3]) % 1.4
           if t < 1 then
-            local re = e * (1 - t)
-            K.ring(cx + f[1], cy + f[2], 1.5 + t * 7, 0.3, 7 * re, 16)
+            local re = e * (1 - t) * ease(t / 0.15)
+            K.ring(cx + f[1], cy + f[2], 1.5 + t * 8, 0.3, 9 * re, 18)
+            K.ring(cx + f[1], cy + f[2], 1 + t * 4, 0.3, 6 * re, 10)
             if t < 0.3 then put(8 * e * sin(t / 0.3 * math.pi), cx + f[1] - 1, cy + f[2] - 1, 3, 2) end
           end
         end

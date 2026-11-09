@@ -277,8 +277,11 @@ return function(K)
           if d1 > 0.01 then put(9.5 * d1, x - 3, y - 1, 6, 2); put(8 * d1, x + 3, y, 3, 1) end
           local ra = (dive - 0.5) * 3
           if ra > 0 then K.ring(bx + 18, pl + 2, 1.5 + ra * 5, 0.35, 6 * de * math.max(0, 1 - ra / 3), 18) end
+          -- (the flight away has its own clock, running to the incident's end)
+          local t0 = 0.55 * inc.dur + 0.66
+          local fly = clamp((inc.age - t0) / math.max(1, inc.dur - t0), 0, 1)
           local d2 = de * ease((dive - 0.55) / 0.25)
-          if d2 > 0.01 then K.bird(bx + 18 + (dive - 0.55) * 100, pl - 6 - (dive - 0.55) * 18, 8 * d2, sin(K.NOW * 14), 2) end
+          if d2 > 0.01 then K.bird(bx + 18 + fly * 110, pl - 6 - fly * 26, 8 * d2, sin(K.NOW * 14), 2) end
         end
       elseif inc.name == "rainbow" then
         -- a rainbow standing in the spray: three soft bands, eased in and out

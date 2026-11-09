@@ -102,7 +102,7 @@ return function(K)
   for k = 1, 5 do SWALLOW[k] = {K.hash(k, 1111) * 6, 0.6 + 0.6 * K.hash(k, 1112), (K.hash(k, 1113) - 0.5) * 2} end
 
   function M.init() marks, tail = {}, 0 end
-  function M.clear() marks = {} end
+  function M.clear() marks, tail = {}, 0 end
 
   function M.note(slot, midi)
     local x = clamp(K.px(midi), AX - AW + 6, AX + AW - 6)
@@ -239,6 +239,7 @@ return function(K)
     end
     -- the notes and their echoes bouncing along the arch
     local fb, div = K.echo()
+    if div == 1 then fb = math.min(fb, 0.6) end    -- (as the engine caps it at 1/8)
     local tempo = K.S and tonumber(K.S.tempo) or 72
     local delay = (ECHO_BEATS[div] or 1.5) * 60 / clamp(tempo or 72, 20, 300)
     local reach = 0.25 + 0.45 * amp + 0.35 * mid      -- how far along the arch each echo goes (rad)
@@ -263,7 +264,7 @@ return function(K)
             local ee = ease(ea / 0.25) * (1 - ease((ea - 0.6) / 1.2)) * cf
             local a = clamp(mk.a0 + mk.dir * n * reach, 0.15, math.pi - 0.15)
             local x, y = arch(a)
-            mark(mk.slot, x, y + 5, 8.5 * lvl * ee * 1.4, ea)
+            mark(mk.slot, x, y + 5, 8.5 * lvl * ee, ea)
           end
           lvl = lvl * fb
         end
@@ -275,7 +276,7 @@ return function(K)
       local e = ease(ma / 2.5) * (1 - ease((ma - 9) / 5))
       for r = 0, 2 do
         local s = 0.55 + ((ma * 0.12 + r / 3) % 1) * 0.45
-        local f = 1 - abs(s - 0.78) * 3
+        local f = 1 - abs(s - 0.775) * 4.5
         if f > 0 then
           for j = 1, 23 do
             local a = j / 24 * math.pi

@@ -54,6 +54,10 @@ return function(K)
     end
   end
   local NDEW = #DEW // 3
+  -- each point's angle round the hub, worked out once
+  local PANG, DANG = {}, {}
+  for j = 1, #PTS, 3 do PANG[j] = math.atan(PTS[j + 2], PTS[j + 1]) end
+  for j = 1, #DEW, 3 do DANG[j] = math.atan(DEW[j + 2], DEW[j + 1]) end
   -- the spokes as points
   local SPTS = {}
   for k = 1, NS do
@@ -203,7 +207,9 @@ return function(K)
     local silk = 1.5 + 1.4 * bloom + 0.9 * breath + 1.6 * K.energy
     local ma = K.moment_age
     local wave = ma < 14 and ease(ma / 1.5) * (1 - ease((ma - 9) / 5)) or 0
-    local front = (ma * 0.18) % 1.3
+    -- (the front starts inside the hub and leaves past the rim before it
+    -- wraps, so no drop is lit on the jump)
+    local front = (ma * 0.18) % 1.55 - 0.25
     for j = 1, #SPTS, 3 do
       local f = SPTS[j]
       local l = silk * (1 - 0.25 * f) + K.bj(j) * 0.6
@@ -220,7 +226,7 @@ return function(K)
       local x, y = PTS[j + 1], PTS[j + 2]
       local l = silk * 0.9 + K.bj(j) * 0.6
       if mid > 0.05 then
-        local a = math.atan(y, x)
+        local a = PANG[j]
         local g = sin(a * 2 - run * 3 + f * 9)
         if g > 0.2 then l = l + mid * 10 * (g - 0.2) end
       end
@@ -243,7 +249,7 @@ return function(K)
       local s = SPARK[i]
       local l = dl + K.bj(i) * 0.7
       if mid > 0.05 then
-        local g = sin(math.atan(DEW[j + 2], DEW[j + 1]) * 2 - run * 3 + f * 9)
+        local g = sin(DANG[j] * 2 - run * 3 + f * 9)
         if g > 0.2 then l = l + mid * 8 * (g - 0.2) end
       end
       local tw = sin(T * (2 + s * 2) + s * 40)

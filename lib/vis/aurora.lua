@@ -107,9 +107,14 @@ return function(K)
             local l = (2.4 + 1.8 * K.chord_glow + sv) * power * p * math.min(1, edge * 2.5) * sh * fo + K.bj(x + i * 64) * 0.5
             l = math.min(l, 11)
             local h = floor(5 + 7 * edge * fo + 3 * sin(x * 0.11 + ph + i))
-            put(l, x, yb - 2, 1, 3)
-            put(l * 0.6, x, yb - 2 - h * 0.5, 1, floor(h * 0.5))
-            put(l * 0.35, x, yb - 2 - h, 1, floor(h * 0.5))
+            -- (a ribbon, not a comb: each column 2 px wide so they run
+            -- together, a bright folded hem, a soft glow rising off it that
+            -- fades, and only now and then a faint ray above)
+            put(l, x, yb - 1, 2, 2)
+            put(l * 0.3, x, yb + 1, 2, 1)
+            put(l * 0.45, x, yb - 1 - floor(h * 0.4), 2, floor(h * 0.4))
+            put(l * 0.2, x, yb - 1 - h, 2, h - floor(h * 0.4))
+            if x % 6 == 0 then put(l * 0.28, x, yb - h - 4, 1, 4 + floor(h * 0.3)) end
             -- and lying in the still water, broken
             if x % 4 == 0 then
               local ry = WL + (WL - yb) * 0.35

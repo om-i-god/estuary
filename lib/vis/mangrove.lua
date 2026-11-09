@@ -163,7 +163,7 @@ return function(K)
         if g > 0 then put(nat * 4 * g, x + 3, W + 3 + (k % 3) * 3, 3, 1) end
       end
     end
-    K.twinkle(WGLINT, hi, 11)
+    K.twinkle(WGLINT, hi, 13)
     -- out_lo rolls broad slow swells of light across the water
     if lo > 0.05 then
       for b = 0, 1 do
@@ -265,7 +265,7 @@ return function(K)
         for d = 3, 9, 3 do put(2.2 * e, x - 12 + sin(T + d) * 0.6, y + d, 25, 1) end
       end
     end
-    K.glitter(sample, 24)
+    K.glitter(sample, 34)
   end
 
   M.init()

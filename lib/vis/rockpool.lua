@@ -21,9 +21,10 @@ return function(K)
   M.incidents = {{"hermit", 20}, {"slop", 10}, {"gull", 9}}
 
   local CX, CY, RX, RY = 64, 37, 57, 23
-  local MARK_MAX = 6
+  local MARK_MAX = 5
   local marks
   local spin = {0, 0, 0, 0}               -- each starfish's slow turn
+  local SF_Y = {46, 30, 52, 38}           -- the starfish's rows
   local SF = {}                           -- the starfish this frame
   for i = 1, 4 do SF[i] = {0, 0, 0, 0} end
 
@@ -63,8 +64,8 @@ return function(K)
     -- boulders round the pool: a lit crown, a few strokes on their flanks,
     -- dark cracks between
     local k = 0
-    for b = 1, 46 do
-      local a = b / 46 * K.TAU + 0.3 * K.hash(b, 301)
+    for b = 1, 38 do
+      local a = b / 38 * K.TAU + 0.3 * K.hash(b, 301)
       local d = 1.12 + 0.5 * K.hash(b, 302)
       local bx, by = CX + cos(a) * RX * d, CY + sin(a) * RY * d * 1.05
       local rx, ry = 4 + 5 * K.hash(b, 303), 2.5 + 3 * K.hash(b, 304)
@@ -114,7 +115,7 @@ return function(K)
   end)
   -- the floor: sand and pebbles, faint under the water
   local sand = K.bake(function(rec)
-    for k = 1, 50 do
+    for k = 1, 34 do
       local y = PTOP + 2 + floor((PBOT - PTOP - 4) * K.hash(k, 305))
       local l, r = PL[y], PR[y]
       if l then
@@ -165,13 +166,18 @@ return function(K)
 
   -- a starfish from above: five arms from a small centre
   local function star(x, y, r, a, l)
+    -- a raised centre, five arms tapering to bright tips, a bead of light
+    -- along each (its texture)
     put(l + 1, x - 1, y - 1, 3, 3)
+    put(l + 2, x, y, 1, 1)
     for k = 0, 4 do
       local aa = a + k * K.TAU / 5
       local ca, sa = cos(aa), sin(aa)
       for j = 1, floor(r) do
-        put(l * (1 - j / (r + 2)), x + ca * (j + 1), y + sa * (j + 1) * 0.85, j < r * 0.5 and 2 or 1, j < r * 0.5 and 2 or 1)
+        local w = j < r * 0.55 and 2 or 1
+        put(l * (1 - j / (r + 3)), x + ca * (j + 1) - (w - 1) * 0.5, y + sa * (j + 1) * 0.85 - (w - 1) * 0.5, w, w)
       end
+      put(l * 0.9 + 1, x + ca * (r + 1.5), y + sa * (r + 1.5) * 0.85, 1, 1)
     end
   end
 
@@ -202,10 +208,10 @@ return function(K)
       end
     end
     K.blit(rim, 1 + 0.4 * bloom + 0.9 * breath - 0.3 * sw)
-    K.twinkle(RIMGLINT, hi, 10)
+    K.twinkle(RIMGLINT, hi, 12)
     -- the sky lying in the pool: a soft sheen, brighter with the daylight
     -- and breathing on the bar
-    local sheen = 0.1 + 0.3 * bloom + 0.55 * breath + 0.25 * sw
+    local sheen = 0.1 + 0.25 * bloom + 0.55 * breath + 0.2 * sw
     for y = PTOP + 1, PBOT - 1, 1 do
       local u = (y - PTOP) / (PBOT - PTOP)
       local v = math.min(0.6, sheen * math.max(0, 1 - abs(u - 0.35) * 2.6))
@@ -249,13 +255,17 @@ return function(K)
     for i, a in ipairs(ANEM) do
       local open = clamp(0.25 + lo * 0.95 + 0.15 * sin(T * 0.3 + a[4]), 0.15, 1.2)
       local x, y = a[1], a[2]
+      -- (a fleshy column, a ring of tentacles round its mouth, each with a
+      -- brighter tip)
       put(3.5 + bloom, x - 1, y - 1, 3, 3)
+      put(1.5, x, y, 1, 1)
       local n = 7
       local r = a[3] * open + 1
       for k = 0, n - 1 do
         local aa = k / n * K.TAU + a[4] + sin(T * 1.2 + k) * 0.15
         local ca, sa = cos(aa), sin(aa)
-        put(2.8 + 2 * open + K.bj(i * 8 + k) * 0.5, x + ca * r * 0.6, y + sa * r * 0.6, 1, 1)
+        put(2.8 + 2 * open + K.bj(i * 8 + k) * 0.5, x + ca * r * 0.4, y + sa * r * 0.4, 1, 1)
+        if a[3] >= 4 then put(2.5 + 2 * open, x + ca * r * 0.7, y + sa * r * 0.7, 1, 1) end
         put(2 + 2.5 * open + hi * 4 * math.max(0, sin(T * 3.7 + k * 2.1 + i)), x + ca * r, y + sa * r, 1, 1)
       end
     end
@@ -266,7 +276,7 @@ return function(K)
       spin[i] = spin[i] + K.DTS * 0.05 * (i % 2 == 0 and 1 or -1)
       if m and p > 0.02 then
         local x = clamp(K.cx(m), 18, 110)
-        local y = ({46, 30, 52, 38})[i] + (60 - m) * 0.12
+        local y = SF_Y[i] + (60 - m) * 0.12
         local r = clamp(4.5 + (64 - m) * 0.1, 3.5, 7) * (0.5 + 0.5 * p)
         star(x, y, r, spin[i], (3 + 0.8 * bloom + 2.4 * K.chord_glow) * p)
         -- wet, its arms glint with out_hi
@@ -287,31 +297,43 @@ return function(K)
         local go = 1 - math.exp(-age * 2.5)
         local x, y, d = mk.x, mk.y, mk.dir
         if mk.slot == 1 then
-          -- a shrimp flicks backwards: a pale body, long feelers
+          -- a shrimp flicks backwards: a curled, segmented body, a fanned
+          -- tail, long feelers trailing forward
           local sx = x - d * go * 12
-          put(8 * e, sx - 2, y, 5, 2); put(5 * e, sx + 3 * (d > 0 and 1 or -1), y + 1, 2, 1)
-          put(4 * e, sx + d * 3, y - 1, 1, 1); put(4 * e, sx + d * 4, y - 2, 1, 1); put(3.5 * e, sx + d * 5, y - 3, 1, 1)
-          put(4 * e, sx + d * 3, y + 1, 1, 1); put(3.5 * e, sx + d * 5, y + 2, 1, 1)
+          for q = 0, 4 do put((8.5 - q * 0.6) * e, sx + d * (2 - q), y + (q >= 3 and 1 or 0), 1, 2 - (q == 4 and 1 or 0)) end
+          put(6 * e, sx - d * 3, y + 2, 1, 1); put(6 * e, sx - d * 4, y + 1, 1, 1); put(6 * e, sx - d * 4, y + 3, 1, 1)
+          put(9.5 * e, sx + d * 2, y, 1, 1)                     -- its eye
+          for q = 1, 5 do put((5 - q * 0.5) * e, sx + d * (2 + q), y - q * 0.6, 1, 1) end
+          for q = 1, 4 do put((4.5 - q * 0.5) * e, sx + d * (2 + q), y + 1 + q * 0.4, 1, 1) end
         elseif mk.slot == 2 then
-          -- a small crab scuttles sideways
+          -- a small crab scuttles sideways: a rounded shell, two raised
+          -- claws, three legs a side stepping
           local cx = x + d * go * 10
           local leg = sin(K.NOW * 16) > 0 and 1 or 0
-          put(8.5 * e, cx - 3, y - 1, 7, 3)
-          put(6 * e, cx - 4, y - leg, 2, 1); put(6 * e, cx + 3, y - 1 + leg, 2, 1)
-          put(6 * e, cx - 4, y + 1 + leg, 2, 1); put(6 * e, cx + 3, y + 2 - leg, 2, 1)
-          put(7 * e, cx - 3, y - 3, 2, 1); put(7 * e, cx + 2, y - 3, 2, 1)
+          put(8.5 * e, cx - 2, y - 2, 5, 1); put(8.5 * e, cx - 3, y - 1, 7, 2); put(7 * e, cx - 2, y + 1, 5, 1)
+          put(10 * e, cx - 1, y - 2, 1, 1); put(10 * e, cx + 1, y - 2, 1, 1)      -- eyes
+          put(7.5 * e, cx - 5, y - 4, 2, 2); put(7.5 * e, cx + 4, y - 4, 2, 2)    -- claws
+          put(6 * e, cx - 4, y - 2, 1, 1); put(6 * e, cx + 4, y - 2, 1, 1)
+          for q = 0, 2 do
+            local l = (q + leg) % 2
+            put(5.5 * e, cx - 5, y - 1 + q + l * 0.5, 2, 1); put(5.5 * e, cx + 4, y - 1 + q + (1 - l) * 0.5, 2, 1)
+          end
         elseif mk.slot == 3 then
-          -- a goby darts off, a puff of sand behind it
+          -- a goby darts off, a puff of sand behind it: blunt head, eye,
+          -- two fins on its back, a tail
           local gx = x + d * go * 18
-          put(8.5 * e, gx - 3, y, 8, 2); put(6 * e, gx - d * 5 - (d > 0 and 1 or 0), y - 1, 2, 4)
-          put(9 * e, gx + d * 2, y, 1, 1)
+          put(8.5 * e, gx - 3, y, 7, 2); put(9 * e, gx + d * 3 - (d < 0 and 1 or 0), y, 2, 2)
+          put(10 * e, gx + d * 3, y, 1, 1)
+          put(6.5 * e, gx - d, y - 1, 2, 1); put(6.5 * e, gx - d * 3, y - 1, 1, 1)
+          put(6 * e, gx - d * 5 - (d > 0 and 1 or 0), y - 1, 2, 4)
           K.ring(x, y + 1, 1 + age * 3, 0.6, 4 * e * (1 - go), 10)
         else
-          -- a few fry scatter
+          -- a few fry scatter, each a tiny body and a dark eye
           for j = 0, 3 do
             local a = j * 1.6 + d
             local fx, fy = x + cos(a) * go * 9, y + sin(a) * go * 5
             put(8 * e, fx, fy, 3, 1); put(4 * e, fx - cos(a) * 3, fy, 2, 1)
+            put(10 * e, fx + cos(a) * 1.5 + 0.5, fy, 1, 1)
           end
         end
       end
@@ -364,7 +386,12 @@ return function(K)
           local y = PTOP - 3 + j * 2.4 * reach
           local hw = 8 + j * 2.2 * reach
           local l = e * (6 - j * 0.45) * (0.7 + 0.3 * sin(inc.age * 3 + j))
-          for x = x0 - hw, x0 + hw, 5 do put(l + K.bj(j * 13 + floor(x)), x + sin(j + inc.age * 2) * 1.5, y, 3, 1) end
+          -- (dashes on a fixed 5 px grid round x0, fading at the ends: the
+          -- sheet widens without its dashes jumping)
+          for x = floor((x0 - hw) / 5) * 5, x0 + hw, 5 do
+            local fe = clamp((hw - abs(x - x0)) / 5, 0, 1)
+            if fe > 0 then put((l + K.bj(j * 13 + x)) * fe, x + sin(j + inc.age * 2) * 1.5, y, 3, 1) end
+          end
         end
       else
         -- a gull's shadow glides over the pool: a long soft wing shape
@@ -379,7 +406,7 @@ return function(K)
         put(3.5 * e, x - 2, y - 2, 5, 5); put(3.2 * e, x - 1, y + 3, 3, 2)
       end
     end
-    K.glitter(sample, 22)
+    K.glitter(sample, 18)
   end
 
   M.init()

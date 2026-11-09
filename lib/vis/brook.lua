@@ -27,7 +27,8 @@ return function(K)
   local MARK_MAX = 8
   local marks
   local fp = 0                            -- how far the stream has run (px)
-  local kick = {0, 0, 0, 0}               -- a note near a stone sets it glinting
+  local kick = {0, 0, 0, 0}               -- a note near a stone sets it glinting (eased up)
+  local kick_to = {0, 0, 0, 0}            -- ...toward this, which a note sets and which decays
   local ST = {}                           -- the stones this frame (below)
 
   -- the banks: the far bank's lower edge, the near bank's upper edge
@@ -105,8 +106,8 @@ return function(K)
   local SHOAL = {}
   for k = 1, 16 do SHOAL[k] = {(K.hash(k, 219) - 0.5) * 34, (K.hash(k, 220) - 0.5) * 16, K.hash(k, 221) * 6} end
 
-  function M.init() marks, fp = {}, 0; for i = 1, 4 do kick[i] = 0 end end
-  function M.clear() marks = {}; for i = 1, 4 do kick[i] = 0 end end
+  function M.init() marks, fp = {}, 0; for i = 1, 4 do kick[i], kick_to[i] = 0, 0 end end
+  function M.clear() marks = {}; for i = 1, 4 do kick[i], kick_to[i] = 0, 0 end end
 
   local function y_of(midi) return 48 - K.pu(midi) * 30 end
 
@@ -118,7 +119,7 @@ return function(K)
       local s = ST[i]
       if s[5] > 0.1 and (not bd or math.abs(s[1] - x) < bd) then best, bd = i, math.abs(s[1] - x) end
     end
-    if best then kick[best] = 1 end
+    if best then kick_to[best] = 1 end
     K.cap_add(marks, {slot = slot, x = x, y = y_of(midi), t0 = K.T, fp0 = fp}, MARK_MAX)
   end
 
@@ -248,7 +249,10 @@ return function(K)
     local speed = 5 + 6 * A[K.AMP] + 0.5 * abs(K.cur_u) + 2.5 * sw
     fp = fp + speed * K.DTS
     stones()
-    for i = 1, 4 do kick[i] = K.follow(kick[i], 0, 1.3, K.DT) end
+    for i = 1, 4 do
+      kick[i] = K.follow(kick[i], kick_to[i], 0.05, K.DT)
+      kick_to[i] = kick_to[i] * math.exp(-K.DT / 1.3)
+    end
     -- the bed, wavering under the moving surface, and the daylight on it
     local dl = 0.55 + 0.9 * bloom + 1.9 * breath + 1.6 * K.chord_glow
     for k, d in ipairs(DAPPLE) do

@@ -88,7 +88,7 @@ return function(K)
     local ma = K.moment_age
     local ball = ma < 14 and ease(ma / 2) * (1 - ease((ma - 10) / 4)) or 0
     local spread = (5 + 6 * A[K.AMP]) * (1 - 0.45 * ball)
-    local tx = 64 + 34 * sin(T * 0.05) + 20 * K.tide_dir - 18 * K.sw_disp
+    local tx = clamp(64 + 34 * sin(T * 0.05) + 20 * K.tide_dir - 18 * K.sw_disp, 20, 108)
     local ty = 30 + 6 * sin(T * 0.08) + 5 * A[K.LO] * sin(T * 0.35)
     if ball > 0 then tx, ty = tx + ball * 9 * cos(ma * 1.2), ty + ball * 5 * sin(ma * 1.2) end
     local vmax = 8 + 8 * A[K.AMP] + 5 * ball
@@ -144,12 +144,10 @@ return function(K)
     else
       hx, hy = -99, -99
     end
-    local left = K.DTS
-    while left > 1e-6 do
-      local dt = math.min(left, 0.05)
-      step(dt)
-      left = left - dt
-    end
+    -- (at most two small steps a frame: a stall never runs the school away)
+    local n = math.min(2, math.ceil(K.DTS / 0.05))
+    local dt = math.min(0.1, K.DTS / math.max(1, n))
+    for _ = 1, n do step(dt) end
     -- the water's light, fading down, breathing on the bar
     F_glow = 0.35 + 0.4 * bloom + 1 * breath
     K.gradient(SURF + 1, SURF + 26, water, nil)

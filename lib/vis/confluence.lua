@@ -182,7 +182,9 @@ return function(K)
     end
     -- the moment: light flowing down the whole canopy into the cistern
     if flowl > 0 then
-      local front = (ma * 0.22) % 1.4
+      -- (the front enters from beyond the top and leaves past the foot: it
+      -- never wraps while it is on a petal)
+      local front = (ma * 0.22) % 1.5 - 0.25
       for _, p in ipairs(PET) do
         for j = 4, 40, 3 do
           local u = j / 40
@@ -195,11 +197,11 @@ return function(K)
       end
     end
     -- dew glinting along the petals' edges with out_hi
-    K.twinkle(DEW, hi, 11)
+    K.twinkle(DEW, hi, 13)
     for i, p in ipairs(PET) do
       local xi, _, yt = edges(p, 1)
       local g = sin(T * 3.4 + i * 1.7)
-      if g > 0.2 then put(hi * 9 * (g - 0.2), xi - 2, yt, 4, 1) end
+      if g > 0.1 then put(hi * 10 * (g - 0.1), xi - 3, yt, 6, 1) end
     end
     -- the cistern at the petals' feet, its glow rising with the bloom
     -- (the water stands higher in it with the bloom: more rows of light,
@@ -247,7 +249,7 @@ return function(K)
         if run >= 1 then
           local ra = age - 2.2
           local sc = mk.slot == 4 and 1.6 or 1
-          K.ring(p[1], GROUND + 2, (1.5 + ra * 4) * sc, 0.3, 7 * e, 14)
+          K.ring(p[1], GROUND + 2, (1.5 + ra * 4) * sc, 0.3, 7 * e * ease(ra / 0.2), 14)
         end
       end
     end
@@ -263,7 +265,7 @@ return function(K)
       for q = 0, 13 do
         local x = (q * 9.7 + T * 6) % 128
         local y = (q * 13 + T * 35) % 50
-        put(sw * 3.5, x, y, 1, 3)
+        put(sw * 3.5 * clamp(math.min(y, 48 - y) / 8, 0, 1), x, y, 1, 3)
       end
     end
     -- the native garden: grasses swaying with out_lo, flowers nodding with out_mid
