@@ -11,6 +11,9 @@
 --      LISTEN=1     fake KeyTrack feed (E minor, G major, silence, D minor)
 --      GRID=1       random grid presses every bar
 --      RESTART=1    track end = stop; K2+K3 after each stop must play a whole new track
+--      METER=5/4    play in that meter (3/4 4/4 5/4 6/8 7/8; default 4/4). METER=walk
+--                   moves to another meter every 37 bars, mid-bar: each change must
+--                   land on the next barline, and every bar lasts its meter's beats
 --      SNAP=dir     after the run, draw each theme into a real raster and write dir/<name>.pgm;
 --                   asserts each frame has >= 40 lit pixels and none repeats another. also
 --                   <name>_still.pgm (the engine's ears silent: never blank) and
@@ -90,9 +93,11 @@ engine = setmetatable({}, {__index = function(_, k)
     -- rises or once the transport stops
     if k == "nature_play" then
       local slot, level = ...
-      if slot == 3 and level > 0 then MOMENT_ON = STEP_BEATS
+      if slot == 3 and level > 0 then MOMENT_ON = STEP_BEATS; MOMENT_B = SIM_S and SIM_S.bar8 / 2 or 4
       elseif slot == 3 then
-        if MOMENT_ON and STEP_BEATS - MOMENT_ON > 16 + 1e-6 then
+        -- 4 bars (of the longer meter, if it changed under the moment)
+        local lim = 4 * math.max(MOMENT_B or 4, SIM_S and SIM_S.bar8 / 2 or 4)
+        if MOMENT_ON and STEP_BEATS - MOMENT_ON > lim + 1e-6 then
           NATURE_FAILS[#NATURE_FAILS + 1] = string.format("moment faded %.1f beats after it began", STEP_BEATS - MOMENT_ON)
         end
         MOMENT_ON = nil
@@ -172,8 +177,9 @@ function clock.run(f)
 end
 function clock.cancel(id) threads[id] = nil end
 -- sync records its division per thread: the step clock must wait for a bar
--- (sync 4) once, then only ever sync(1/2). STEP_BEATS is the beats it has
--- advanced since, and is what the rules use as time.
+-- (sync to the bar's beats: 4 at 4/4) once, then only ever sync(1/2).
+-- STEP_BEATS is the beats it has advanced since, and is what the rules use
+-- as time.
 VT = 0   -- virtual seconds, advanced one 8th per drive tick
 SYNCS = {}          -- thread id -> {first = arg, n = count, odd = bad arg}
 STEP_BEATS = 0
@@ -183,7 +189,8 @@ function clock.sync(d)
   r.n = r.n + 1
   if r.n == 1 then
     r.first = d
-  elseif r.first == 4 then
+    r.bar = SIM_S and SIM_S.bar8 / 2 or 4
+  elseif r.first == r.bar then
     if d ~= 1 / 2 then r.odd = d end
     STEP_BEATS = STEP_BEATS + d
   end
@@ -323,6 +330,18 @@ local function getS()
 end
 local S = getS()
 assert(S, "can't reach S through key()")
+SIM_S = S
+local MT = include("lib/meter")
+local METER = os.getenv("METER")
+if METER == "" then METER = nil end
+local WALK = METER == "walk"
+if METER and not WALK then
+  local idx
+  for i, n in ipairs(MT.NAMES) do if n == METER then idx = i end end
+  assert(idx, "no meter " .. METER)
+  params:set("meter", idx)
+  assert(S.meter == idx and S.bar8 == MT.bar8(idx), "meter " .. METER .. " not taken while stopped")
+end
 R.attach(S)
 local notes_by = {0, 0, 0, 0}
 S.probe = function(slot, midi, ev, dur_beats)
@@ -460,6 +479,8 @@ local RESTART = os.getenv("RESTART")
 local STOPS = {}                -- track bars played before each track-end stop
 if RESTART then params:set("track_end", 1) end
 local bars_seen, steps = 0, 0
+local last_bar_step, last_bar_t, last_bar8 = nil, nil, nil
+local BAR_FAILS = {}
 local max_bars_between = 0
 -- K2 / K3: a hold (> 0.4 s) released without turning is not a tap (on the
 -- play page; MUTES has moved to the parts page)
@@ -477,7 +498,7 @@ end
 while bars_seen < BARS do
   tick_all()
   steps = steps + 1
-  assert(steps < BARS * 8 + 64 * (#STOPS + 1), "clock stalled")
+  assert(steps < BARS * 10 + 64 * (#STOPS + 1), "clock stalled")
   if not S.playing then
     print("stopped at bar", S.track_bar)
     if MOMENT_ON then NATURE_FAILS[#NATURE_FAILS + 1] = "moment still playing after stop" end
@@ -486,8 +507,30 @@ while bars_seen < BARS do
     key(2, 1); key(3, 1); key(3, 0); key(2, 0)
     assert(S.playing and S.track_bar == 0, "K2+K3 after a track-end stop didn't start a new track")
   end
-  if S.step % 8 == 1 and S.step // 8 > bars_seen then
-    bars_seen = S.step // 8
+  if S.playing and S.bar_pos == 1 and S.step ~= last_bar_step then
+    last_bar_step = S.step
+    bars_seen = bars_seen + 1
+    -- each bar lasts its own meter's beats (the barline was a tick ago)
+    local t = STEP_BEATS
+    if last_bar_t and #STOPS == 0 and math.abs(t - last_bar_t - last_bar8 / 2) > 1e-6
+       and #BAR_FAILS < 3 then
+      BAR_FAILS[#BAR_FAILS + 1] = string.format("bar %d lasted %.1f beats, its meter %d 8ths", bars_seen - 1, t - last_bar_t, last_bar8)
+    end
+    last_bar_t, last_bar8 = t, S.bar8
+    -- a waiting meter never outlives the barline it waited for
+    if S.meter_next then BAR_FAILS[#BAR_FAILS + 1] = "meter change still waiting after a barline" end
+    -- walk: a new meter, asked for mid-bar (the next barline takes it)
+    if WALK and bars_seen % 37 == 0 then
+      for _ = 1, 3 do tick_all(); steps = steps + 1 end
+      local v = S.meter
+      while v == S.meter do v = math.random(#MT.NAMES) end
+      local was = S.bar8
+      params:set("meter", v)
+      if S.playing and (S.bar8 ~= was or S.meter_next ~= v) then
+        BAR_FAILS[#BAR_FAILS + 1] = "a meter change mid-bar didn't wait for the barline"
+      end
+      WALKED = (WALKED or 0) + 1
+    end
     R.on_bar(S, STEP_BEATS)
     hands(bars_seen)
     -- a muted pedal holds no midi note
@@ -620,12 +663,12 @@ end
 do
   local found = false
   for _, r in pairs(SYNCS) do
-    if r.first == 4 then
+    if r.first == r.bar then
       found = true
       if r.odd then extra[#extra + 1] = "step clock synced to " .. r.odd .. " instead of 1/2" end
     end
   end
-  if not found then extra[#extra + 1] = "step clock never waited for a bar with sync(4)" end
+  if not found then extra[#extra + 1] = "step clock never waited for a bar with sync(bar beats)" end
   -- one tick per 8th: virtual beats advanced match the ticks driven
   if math.abs(STEP_BEATS - (steps - 1) * 0.5) > 1.01 then
     extra[#extra + 1] = string.format("step clock advanced %.1f beats in %d ticks", STEP_BEATS, steps)
@@ -708,8 +751,11 @@ if OUTSM and S.playing == false and (calls.midi_stop or 0) ~= 1 then extra[#extr
 if MIDIM then
   for k in pairs(MIDI_HELD) do if tonumber(k:match("^(%d+):")) >= 3 then extra[#extra + 1] = "midi note " .. k .. " left hanging after stop" end end
 end
-if MOMENT_ON and STEP_BEATS - MOMENT_ON > 16 + 1e-6 then NATURE_FAILS[#NATURE_FAILS + 1] = "moment never faded" end
+if MOMENT_ON and STEP_BEATS - MOMENT_ON > 4 * S.bar8 / 2 + 1e-6 then NATURE_FAILS[#NATURE_FAILS + 1] = "moment never faded" end
 for _, f in ipairs(NATURE_FAILS) do extra[#extra + 1] = f end
+for _, f in ipairs(BAR_FAILS) do extra[#extra + 1] = f end
+if WALK and BARS >= 100 and (WALKED or 0) == 0 then extra[#extra + 1] = "meter walk never changed the meter" end
+print(string.format("meter %s (%d 8ths a bar)%s", MT.name(S.meter), S.bar8, WALK and (", walked " .. (WALKED or 0) .. " times") or ""))
 local ok, fails = R.report()
 for _, f in ipairs(extra) do fails[#fails + 1] = f; ok = false end
 if ok then
