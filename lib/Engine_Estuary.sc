@@ -480,13 +480,17 @@ Engine_Estuary : CroneEngine {
     // 3.01: only a hint of a bowl's stretch, so it stays sweet), each with a
     // partner a fraction of a hertz to a hertz and a half away so it beats
     // slowly (the bowl's slow wah), a short quiet strike glint at the 4th, a
-    // very long ring and a slow sway between the speakers
+    // very long ring (about 7 s at middle C) and a slow sway between the
+    // speakers
     SynthDef(\est_bowl, {
       arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
       var ks  = (freq / 261).clip(0.25, 8).pow(-0.3);
       var h   = ((vel * 0.4) + (bright * 0.6)) * Rand(0.9, 1.1);
       var atk = 0.008;
-      var e1  = EnvGen.ar(Env([0, 1, 0], [atk, (9.0 * ks)], [\sin, -4]), doneAction: 2);
+      // the ring's shape runs over 9 s (at middle C) but the synth ends at 7
+      // s: from 6.3 s, where the ring is already about 27 dB down, it fades
+      // out over 0.7 s (the last stretch would be below -30 dB anyway)
+      var e1  = EnvGen.ar(Env([0, 1, 0], [atk, (9.0 * ks)], [\sin, -4])) * EnvGen.kr(Env([1, 1, 0], [(6.3 * ks), (0.7 * ks)], [0, -2]), doneAction: 2);
       var e2  = EnvGen.kr(Env([0, 1, 0], [atk, (4.5 * ks)], [\sin, -4]));
       var e3  = EnvGen.kr(Env([0, 1, 0], [atk, (2.2 * ks)], [\sin, -4.5]));
       var f2  = (freq * 2.005).min(16000), f3 = (freq * 3.01).min(16000);
@@ -691,7 +695,7 @@ Engine_Estuary : CroneEngine {
         Pan2.ar(v * (1 + (LFNoise2.kr(0.1) * 0.15)), [-0.45, -0.15, 0.15, 0.45][i]);
       };
       sig = LPF.ar(LPF.ar(Mix(sig), cut), (cut * 1.6));
-      Out.ar(out, sig * (env * (amp * 0.72)));
+      Out.ar(out, sig * (env * (amp * 0.8)));
     }).add;
 
     // bowed: a bowed vibraphone bar / glass rim. each note swells in on its
