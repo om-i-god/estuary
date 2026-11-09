@@ -1,5 +1,5 @@
 -- estuary / visuals
--- twenty-two quiet places on the 128x64 OLED, drawn from what the music is doing
+-- twenty-eight quiet places on the 128x64 OLED, drawn from what the music is doing
 -- and from what the engine hears of itself. soft greys, a lot of black,
 -- nothing that flashes the whole screen; the dim levels make the atmosphere
 -- (sky, far shores, mist, water texture) and the brighter ones are kept for
@@ -41,7 +41,8 @@ local VIS = {}
 VIS.names = {"ripples", "horizon", "postcards", "rain", "tide", "drift",
   "reeds", "koi", "kelp", "fireflies", "mist", "flock",
   "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies",
-  "echo bridge", "confluence"}
+  "echo bridge", "confluence",
+  "delta", "onsen", "lotus", "glacier", "pod", "wellspring"}
 
 local FPS = 20
 local TAU = 2 * math.pi

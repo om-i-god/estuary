@@ -30,11 +30,13 @@ local function mkS()
 end
 
 -- the six v2 themes first, in their old order (saved psets keep pointing at
--- the same theme), then the six v3 ones, then the ten v5 ones
+-- the same theme), then the six v3 ones, then the ten v5 ones, then the
+-- six v6 ones
 local NAMES = {"ripples", "horizon", "postcards", "rain", "tide", "drift",
   "reeds", "koi", "kelp", "fireflies", "mist", "flock",
   "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies",
-  "echo bridge", "confluence"}
+  "echo bridge", "confluence",
+  "delta", "onsen", "lotus", "glacier", "pod", "wellspring"}
 
 local CHORDS = {{48, 55, 62, 64}, {45, 52, 60, 64}, {41, 48, 57, 64}, {43, 50, 59, 62}}
 
@@ -873,4 +875,5 @@ end
 
 -- for ad-hoc scripts (contact sheets, per-frame diffs): dofile this file
 -- with test() stubbed and call VIS_HARNESS.run(theme, scenario, {keep = true})
-VIS_HARNESS = {run = run, bufdiff = bufdiff, react_run = react_run, jump_rate = jump_rate, edge_run = edge_run}
+VIS_HARNESS = {run = run, bufdiff = bufdiff, react_run = react_run, jump_rate = jump_rate, edge_run = edge_run,
+  inc_run = inc_run, pop_step = pop_step, frame_median = frame_median}

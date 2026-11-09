@@ -96,12 +96,25 @@ local function flash(text)
   msg, msg_t = text, util.time()
 end
 
--- VISUALS > theme cycle: a new random theme on a bar edge / phrase / track
+-- VISUALS > theme cycle: a new random theme on a bar edge / phrase / track.
+-- the music shares math.random, so the cycle turns the music's dice exactly
+-- as it did when there were 22 places (a seed sounds the same however many
+-- places there are); which place comes next is the visuals' own dice
+local CYCLE_DICE_N = 22
+local cycle_seed = 5
+local dice_theme = 1                    -- the place the 22-place cycle would be on
+local cycling = false
 local function cycle_theme(edge)
   if params:get("vis_cycle") ~= edge or #VIS.names < 2 then return end
-  local n = theme
-  while n == theme do n = math.random(#VIS.names) end
+  local d = dice_theme
+  repeat d = math.random(CYCLE_DICE_N) until d ~= dice_theme
+  dice_theme = d
+  cycle_seed = (cycle_seed * 1103515245 + 12345 + d) & 0x7fffffff
+  local n = 1 + cycle_seed % (#VIS.names - 1)
+  if n >= theme then n = n + 1 end
+  cycling = true
   params:set("theme", n)
+  cycling = false
 end
 
 ------------------------------------------------------------------------
@@ -647,7 +660,8 @@ local function draw_hud()
       sec = sec .. " " .. math.floor(S.progress * 100) .. "%"
     end
     if N.state ~= "idle" then sec = sec .. " ~" end
-    -- (held K1 shows the theme's name top left, up to "echo bridge 21/22":
+    -- (held K1 shows the theme's name top left, up to "echo bridge 21/28"
+    -- or "wellspring 28/28":
     -- the section steps aside so the two never overlap)
     if not k1 then text_box(127, 7, sec, S.playing and 8 or 3, true) end
 
@@ -883,7 +897,11 @@ local function setup_params()
 
   params:add_separator("VISUALS")
   params:add_option("theme", "theme", VIS.names, 1)
-  params:set_action("theme", function(v) theme = v end)
+  params:set_action("theme", function(v)
+    theme = v
+    -- (a place picked by hand is where the cycle's dice stand too)
+    if not cycling then dice_theme = v end
+  end)
   params:add_option("vis_cycle", "theme cycle", {"off", "every 8 bars", "every phrase", "each track"}, 1)
   params:add_option("hud", "overlay", {"full", "minimal", "off"}, 1)
   params:add_number("vis_speed",      "speed",      1, 10, 3)
