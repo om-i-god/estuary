@@ -6,7 +6,8 @@
 -- no dim/aug, minor-quality chords only in warm voicings, no moment on a swell).
 -- also: chord pcs inside the mode (b3/b6 only on the borrowed iv), no
 -- tritone, no b9 over the chord root, small singable motif leaps and span,
--- no semitone between the pedal and the chord, cycles >= 7 beats, no held
+-- no semitone between the pedal and the chord, cycles of 7-15 whole beats
+-- (odd beats unless the motif fits the bar of a meter off 4/4), no held
 -- melody note a semitone right above a pad note, and no two motifs holding
 -- a semitone apart for more than a beat.
 
@@ -264,8 +265,15 @@ function R.on_bar(S, t)
     if notes < 3 or notes > 7 then fail("notes", "motif " .. i .. " has " .. notes .. " notes") end
     if rests < 1 then fail("rests", "motif " .. i .. " has no rest") end
     if ones > 2 then fail("pair", "motif " .. i .. " has " .. ones .. " eighth notes") end
-    if m.cycle % 4 ~= 2 then fail("cycle", "motif " .. i .. " cycle of " .. m.cycle .. " eighths is not an odd number of beats") end
+    -- a phasing cycle is an odd number of beats; a bar-fitting one (meters
+    -- off 4/4) whole bars, still whole beats
+    if m.cycle % 2 ~= 0 then
+      fail("cycle", "motif " .. i .. " cycle of " .. m.cycle .. " eighths is not whole beats")
+    elseif not m.fit and m.cycle % 4 ~= 2 then
+      fail("cycle", "motif " .. i .. " cycle of " .. m.cycle .. " eighths is not an odd number of beats")
+    end
     if m.cycle < 14 then fail("short cycle", "motif " .. i .. " cycle of " .. m.cycle .. " eighths is under 7 beats") end
+    if m.cycle > 30 then fail("long cycle", "motif " .. i .. " cycle of " .. m.cycle .. " eighths is over 15 beats") end
   end
 end
 

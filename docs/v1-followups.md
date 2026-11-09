@@ -107,3 +107,16 @@ Engine change: run SYSTEM > RESTART once before loading. On the Mac, `test/sc/ru
   - react 0 should sound exactly like sounds v2.
 - Palettes: with 20 palettes, play several `new track`s. Every palette should come round before any repeats, and each should feel like one record.
 - Old psets: load a pset saved with sounds v2 and confirm its pinned palette, pad sound and voices are unchanged.
+
+## Meter: on-device listening checks
+No engine change. PARAMS > ESTUARY > meter; the sim checks every meter against the rules (`METER=5/4 lua test/sim.lua 900 2 4`, and 3/4, 6/8, 7/8, plus `METER=walk` for changes mid-play), and 4/4 replays the old engine stream exactly. These need ears:
+- 4/4: load a saved pset and a fresh boot; it should sound exactly as before, with the meter param on 4/4.
+- 5/4 (3 + 2): over a few phrases, can you feel the bar without counting? The downbeat lean (+8%) and the beat-4 lean (+4%) should read as a lilt, never as an accent or a pulse. If it is inaudible, the lean can grow a little in `lib/meter.lua`; if it thumps, shrink it.
+- 5/4 motifs: the bar-fitting motifs (10 or 15 beats) should come round with the barline and sit with the chords; the phasing ones should still drift. Does the mix of the two feel like one piece?
+- 3/4: should feel like a slow waltz breath, not a march; the motifs of 9, 12 and 15 beats against three-beat bars.
+- 6/8: the lean on the 4th eighth should give a gentle two-in-a-bar sway, distinct from 3/4 (same bar length, different lean).
+- 7/8 (2 + 2 + 3): the shortest bar (3.5 beats). Listen for whether the chord changes, pad crossfades and swells feel hurried, and whether the long last group reads as a lean back rather than a stumble.
+- Changing meter during play (from PARAMS, or the param mapped to a MIDI controller): the play page shows `4/4>5/4` until the next barline, then the new bar starts. No note should cut or double; the pad and pedal carry on; the grid's phrase row keeps counting bars.
+- Visuals: the bar breath should follow the new bar length within one bar of a change (longest in 5/4, shortest in 7/8).
+- MIDI / crow: with an external sequencer following norns' clock, check that the bar-rate outputs (bloom CV, CCs, the phrase pulse) land on the new barline, and that the clock pulses are unchanged (they are beats).
+- Track mode: a 12-minute track should still last about 12 minutes in every meter (216 bars of 4/4, 172 of 5/4, 288 of 3/4, 246 of 7/8 at 72 bpm), and changing meter mid-track should not move the section or the % on the screen.

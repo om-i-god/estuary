@@ -22,6 +22,8 @@
 -- grid: row 1 phrase, row 2 bloom (press to pull it),
 --   row 3 mute parts, rows 4-7 motifs (press an event: note <-> rest),
 --   row 8 breathe / mutate / tide / new track / play
+-- params > meter: 3/4 4/4 5/4 6/8 7/8,
+--   from the next barline
 -- params > LISTEN: follow the key of the audio input
 -- params > MOTIF / PAD / PEDAL OUT: internal, midi or both
 --
@@ -41,6 +43,7 @@ local O   = include("lib/outs")
 local L   = include("lib/listen")
 local GU  = include("lib/gridui")
 local PAL = include("lib/palettes")
+local MT  = include("lib/meter")
 
 local VIS = include("lib/visuals")
 
@@ -65,6 +68,9 @@ local S = {
   mode_play = 1, track_minutes = 12, end_action = 2, phrase_len = 16,
   freeze = false, moment_freq = 1,
   tempo = 72, bar_sec = 60 / 72 * 4,
+  -- the meter (MT index), its 8ths per bar, where the step clock is in the
+  -- bar (0 = the downbeat), and a change waiting for the next barline
+  meter = MT.DEFAULT, bar8 = 8, bar_pos = 0, meter_next = nil,
   chord = {48, 55, 62, 64}, chord_degree = 1, chord_label = "I",
   gain = {}, muted = {}, soloed = {},
 }
@@ -81,7 +87,7 @@ local theme = 1
 local vis_chord, vis_state, vis_moment   -- what the visuals were last told
 local page  = 1
 local msg, msg_t = nil, 0
-local pedal_pc_last, pedal_bar = nil, -99   -- the sounding pedal (midi, nil = none), when struck
+local pedal_pc_last, pedal_beat = nil, -99 * 4   -- the sounding pedal (midi, nil = none), when struck (track beats)
 local PEDAL_FLOOR = 28                       -- E1: nothing lower
 
 local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
@@ -185,15 +191,18 @@ local function pedal_off()
 end
 
 -- pedal: a soft low note under the chord at its gain; again when the pitch
--- moves, else every four bars so it never lapses. thinned, muted or with no
+-- moves, else again on the last barline before 16 beats have passed (four
+-- bars of 4/4; counted in beats, so a meter change can't stretch the gap
+-- past the 18-beat note). thinned, muted or with no
 -- clean place under this chord, it lets go
 local function pedal_follow()
   local g = S.muted.pedal and 0 or (S.gain.pedal or 0)
   local midi = S.playing and g > 0.02 and S.pedal_pc
     and place_pedal((S.root_pc + S.pedal_pc) % 12, S.chord, pedal_pc_last)
   if midi then
-    if midi ~= pedal_pc_last or S.track_bar - pedal_bar >= 4 then
-      pedal_pc_last, pedal_bar = midi, S.track_bar
+    local now = S.track_beats or 0
+    if midi ~= pedal_pc_last or now - pedal_beat + S.bar8 / 2 > 16 then
+      pedal_pc_last, pedal_beat = midi, now
       emit("pedal", midi, 0.7 * g, 4.5 * 4)
       if S.pedal_probe then S.pedal_probe(midi, 4.5 * 4) end
     end
@@ -282,17 +291,36 @@ local function step_motif(i)
   held[i] = {midi = midi, till = S.step + ev.dur}
   local dur_beats = ev.dur / 2
   local vel = (0.5 + 0.3 * m.bright) * g
+  -- the meter's lean: a little more on the downbeat and the group starts,
+  -- never past the part's ceiling (0.8 x gain). none at 4/4
+  local lean = MT.lean(S.meter, S.bar_pos)
+  if lean then vel = math.min(0.8 * g, vel * lean) end
   emit(k, midi, vel, dur_beats, m)
-  if S.probe then S.probe(i, midi, ev, dur_beats) end
+  if S.probe then S.probe(i, midi, ev, dur_beats, vel) end
   VIS.event("note", i, midi, dur_beats * clock.get_beat_sec())
 end
 
+-- a new meter takes over on a barline (or at once while stopped). the step
+-- clock re-anchors: a stopped clock part-way through a bar rounds up to that
+-- bar's end, so the new bar starts cleanly. notes already sounding ring on
+local function apply_meter()
+  local v = S.meter_next
+  if not v then return end
+  S.meter_next = nil
+  if S.bar_pos ~= 0 then
+    S.step = S.step + (S.bar8 - S.bar_pos)
+    S.bar_pos = 0
+  end
+  S.meter, S.bar8 = v, MT.bar8(v)
+end
+
 local function play_step()
-  local s = S.step % 8
+  local s = S.bar_pos
 
   if s == 0 then
+    apply_meter()                 -- a waiting meter lands on this barline
     S.tempo = clock.get_tempo()
-    S.bar_sec = clock.get_beat_sec() * 4
+    S.bar_sec = clock.get_beat_sec() * S.bar8 / 2
     local r = C.bar(S)            -- also runs nature and harmony
     S.nature_state = N.state
     S.moment_active = N.moment_active
@@ -324,6 +352,7 @@ local function play_step()
 
   for i = 1, 4 do step_motif(i) end
   S.step = S.step + 1
+  S.bar_pos = (S.bar_pos + 1) % S.bar8
 end
 
 ------------------------------------------------------------------------
@@ -331,7 +360,7 @@ end
 ------------------------------------------------------------------------
 
 local function loop(my)
-  clock.sync(4)                   -- start on a bar
+  clock.sync(S.bar8 / 2)          -- start on a bar (in beats)
   if S.playing and my == loop_gen then O.start() end
   while true do
     if not S.playing or my ~= loop_gen then return end
@@ -344,12 +373,16 @@ start = function()
   if S.playing then return end
   -- a track that ended on "stop": play starts the next one (new seed, a
   -- neighbouring key), as "next track" would have
-  if S.mode_play == 2 and S.total_bars and S.track_bar >= S.total_bars then
+  if S.mode_play == 2 and S.total_bars and C.track_pos(S) >= S.total_bars then
     new_track(math.random(1, 9999), true)
     flash("new track " .. S.seed)
   end
   S.playing = true
-  S.step = (S.step + 7) // 8 * 8  -- resume on a bar
+  apply_meter()                   -- one chosen while stopped (or left waiting)
+  if S.bar_pos ~= 0 then          -- resume on a bar
+    S.step = S.step + (S.bar8 - S.bar_pos)
+    S.bar_pos = 0
+  end
   S.chord_changed = true          -- voice the pad
   pedal_pc_last = nil
   loop_gen = loop_gen + 1
@@ -597,7 +630,13 @@ local function draw_hud()
   -- second line: the chord (roman, "/I" = over a tonic pedal), then the page
   if not k1 and (hud < 3 or page ~= 1) then
     local sub = S.chord_label or ""
-    if page ~= 1 then sub = sub .. "  " .. PAGES[page].name end
+    if page ~= 1 then
+      sub = sub .. "  " .. PAGES[page].name
+    else
+      -- the play page: the meter (and the one waiting for the barline)
+      sub = sub .. "  " .. MT.name(S.meter)
+      if S.meter_next and S.meter_next ~= S.meter then sub = sub .. ">" .. MT.name(S.meter_next) end
+    end
     text_box(1, 15, sub, page ~= 1 and 6 or 5)
   end
 
@@ -734,6 +773,17 @@ local function setup_params()
   end)
   params:add_option("phrase_len", "phrase length (bars)", {"8", "16", "32"}, 2)
   params:set_action("phrase_len", function(v) S.phrase_len = PHRASES[v] end)
+  -- the time signature; lands on the next barline (at once while stopped)
+  params:add_option("meter", "meter", MT.NAMES, MT.DEFAULT)
+  params:set_action("meter", function(v)
+    if v == S.meter and not S.meter_next then return end
+    S.meter_next = v
+    if not S.playing then
+      apply_meter()
+    elseif ready then
+      flash("meter " .. MT.name(v) .. " next bar")
+    end
+  end)
   params:add_number("track_minutes", "track length (min)", 6, 30, 12)
   params:set_action("track_minutes", function(v) S.track_minutes = v end)
   params:add_option("track_end", "track end", {"stop", "next track"}, 2)

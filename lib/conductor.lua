@@ -31,6 +31,17 @@ local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 local function pick(t) return t[math.random(#t)] end
 local function plen(S) return S.phrase_len or 16 end
 local function tempo(S) return S.tempo or 72 end
+-- beats in one bar of the meter playing (4 at 4/4; 7/8 is 3.5): lengths set
+-- in minutes become bars of the bar's real duration
+local function bar_beats(S) return (S.bar8 or 8) / 2 end
+-- how far into the track, in bars of the meter playing now: beats played /
+-- this bar's beats, so a meter change mid-track keeps the arc where it is
+-- in time (at an unchanged meter it is just the bar count)
+local function track_pos(S)
+  if S.track_beats then return S.track_beats / bar_beats(S) end
+  return S.track_bar
+end
+C.track_pos = track_pos
 
 ------------------------------------------------------------------------
 -- set mode cycle
@@ -62,7 +73,7 @@ end
 local function start_cycle(S)
   S.cycle = (S.cycle or 0) + 1
   S.cycle_start = S.track_bar
-  S.cycle_bars = math.floor(math.random(20, 40) * tempo(S) / 4)
+  S.cycle_bars = math.floor(math.random(20, 40) * tempo(S) / bar_beats(S))
   schedule_swells(S)
 end
 
@@ -71,8 +82,10 @@ end
 ------------------------------------------------------------------------
 
 local function track_total(S)
-  return math.max(48, math.floor((S.track_minutes or 12) * tempo(S) / 4))
+  return math.max(48, math.floor((S.track_minutes or 12) * tempo(S) / bar_beats(S)))
 end
+
+C.track_total = track_total
 
 local function track_section(S)
   local total = track_total(S)
@@ -80,8 +93,8 @@ local function track_section(S)
   for i, sec in ipairs(C.SECTIONS) do
     local len = math.floor(sec.len * total + 0.5)
     if i == #C.SECTIONS then len = total - start end
-    if S.track_bar < start + len then
-      return sec, (S.track_bar - start) / math.max(1, len - 1), total
+    if track_pos(S) < start + len then
+      return sec, (track_pos(S) - start) / math.max(1, len - 1), total
     end
     start = start + len
   end
@@ -93,7 +106,7 @@ local function base_energy(S)
   if S.mode_play == 2 then
     local sec, prog, total = track_section(S)
     S.section = sec.name
-    S.progress = S.track_bar / total
+    S.progress = track_pos(S) / total
     S.total_bars = total
     return sec.e0 + (sec.e1 - sec.e0) * clamp(prog, 0, 1)
   end
@@ -110,7 +123,7 @@ end
 ------------------------------------------------------------------------
 
 local function retire(S, slot)
-  S.motifs[slot] = M.new(slot)
+  S.motifs[slot] = M.new(slot, S.bar8)       -- cycles that suit the meter
   S.born[slot] = S.track_bar
 end
 
@@ -142,7 +155,8 @@ function C.new_track(S, seed, move_key)
     local j = math.random(i)
     S.rest_bars[i], S.rest_bars[j] = S.rest_bars[j], S.rest_bars[i]
   end
-  S.track_bar, S.nudge, S.walk = 0, 0, 0
+  S.track_bar, S.track_beats, S.nudge, S.walk = 0, 0, 0, 0
+  S.heard_bar = {}
   S.breathe_until = 0
   S.swell_pending = false
   S.phrases_since_moment = 3
@@ -253,11 +267,19 @@ end
 local function fade(S)
   local muted = S.muted or {}
   local audible = 0
-  -- falling (and held) parts first; a muted part is silent at once. a motif
-  -- heard last bar still counts: its last note (<= 4 beats) may ring on
+  -- falling (and held) parts first; a motif heard last bar still counts:
+  -- its last note (<= 4 beats) may ring on. in a bar shorter than 4 beats
+  -- (3/4, 6/8, 7/8) that note may ring through the next bar too, so a motif
+  -- counts for as many bars as 4 beats can span (1 at 4/4 and 5/4; the
+  -- shorter of this bar and the last, across a meter change)
+  local b8 = S.bar8 or 8
+  local ring = math.ceil(8 / math.min(b8, S.fade_bar8 or b8))
+  S.fade_bar8 = b8
+  local hb = S.heard_bar or {}
+  S.heard_bar = hb
   for _, k in ipairs(PARTS) do
     local g, t = S.gain[k] or 0, S.target[k] or 0
-    local rang = g > 0.02
+    local rang = g > 0.02 or (ring > 1 and hb[k] ~= nil and S.track_bar - hb[k] <= ring)
     if muted[k] then g = 0
     elseif t <= g then g = math.max(t, g - FADE_DOWN) end
     S.gain[k] = g
@@ -275,6 +297,9 @@ local function fade(S)
         S.gain[k] = ng
       end
     end
+  end
+  for _, k in ipairs(PARTS) do
+    if (S.gain[k] or 0) > 0.02 then hb[k] = S.track_bar end
   end
 end
 
@@ -401,9 +426,10 @@ function C.bar(S)
   end
 
   S.track_bar = S.track_bar + 1
+  S.track_beats = (S.track_beats or 0) + bar_beats(S)
 
   if S.mode_play == 2 then
-    if S.track_bar >= (S.total_bars or math.huge) then
+    if track_pos(S) >= (S.total_bars or math.huge) then
       if S.end_action == 1 then return "stop" end
       C.new_track(S, math.random(1, 9999), true)
       return "next"
