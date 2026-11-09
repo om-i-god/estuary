@@ -80,7 +80,7 @@ return function(K)
 
   -- the light on the ice (its strength set each frame): brighter higher up
   local F_ice, F_sky = 1, 1
-  local function ice(y) return F_ice * (0.16 - 0.07 * (y - 10) / (WL - 10)) end
+  local function ice(y) return F_ice * (0.17 - 0.07 * (y - 10) / (WL - 10)) end
   local function sky(y) return F_sky * (0.05 + 0.016 * y) end
 
   function M.draw()
@@ -100,7 +100,7 @@ return function(K)
       if t < crest[c] - 1 then put(1.8 + 0.8 * bloom + K.bj(c) * 0.3, c * 2, t, 2, 1) end
     end
     -- the face: a soft light over the ice, brighter with the day and the bar
-    F_ice = 0.9 + 0.5 * bloom + 1.0 * breath + 0.8 * sun
+    F_ice = 0.9 + 0.35 * bloom + 0.8 * breath + 0.8 * sun
     -- (only under the seracs: each row's runs below the crest, worked
     -- out once)
     for y = 6, WL - 1 do
@@ -117,6 +117,14 @@ return function(K)
       if m and p > 0.02 then
         local y0 = WL - 4 - clamp((m - 36) / 40, 0, 1) * 20
         local l = (3.4 + 2.8 * K.chord_glow + 1.2 * breath) * p
+        -- (a soft blue stratum round the band's bright seam)
+        for dy = -1, 1 do
+          local yy = floor(y0 + 0.5) + dy
+          local r = FACE_RUNS[yy]
+          if r then
+            for q = 1, #r, 2 do K.dither_row(p * (0.5 + 0.25 * K.chord_glow) * (1 - abs(dy) / 2.5), yy, nil, r[q], r[q + 1]) end
+          end
+        end
         for x = 0, 126, 5 do
           local y = y0 + 1.5 * sin(x * 0.04 + i * 1.3) + (x - 64) * 0.03 * (i % 2 == 0 and 1 or -1)
           if y > K.at(crest, x) + 1 then
@@ -130,17 +138,17 @@ return function(K)
     -- the moment: a band of sunlight sweeping up the face
     if sweep > 0 then
       for y = 10, WL - 1 do
-        local d = abs(y - sy) / 3.5
+        local d = abs(y - sy) / 3
         if d < 1 then
           local r = FACE_RUNS[y]
           if r then
-            for q = 1, #r, 2 do K.dither_row(sweep * 0.65 * (1 - d * d), y, nil, r[q], r[q + 1]) end
+            for q = 1, #r, 2 do K.dither_row(sweep * 0.5 * (1 - d * d), y, nil, r[q], r[q + 1]) end
           end
           -- (the ice it crosses glitters)
           for q = 0, 9 do
             local gx = (q * 13 + y * 7) % 128
             local w = sin(ma * 5 + q * 1.7 + y)
-            if w > 0 then put(sweep * 10 * w * (1 - d), gx, y, 2, 1) end
+            if w > 0 then put(sweep * 13 * w * (1 - d * 0.7), gx, y, 3, 1) end
           end
         end
       end
@@ -161,8 +169,11 @@ return function(K)
         local top = K.at(crest, x) + 3
         local ph = (melt * (0.6 + 0.08 * k) / (WL - top) + k * 0.27) % 1
         local y = top + ph * (WL - top - 2)
-        put(mid * f * (5.5 + 4 * sin(math.pi * ph)), x, y, 2, 3)
-        put(mid * f * 2, x, math.max(top, y - 7), 1, math.min(7, y - top))
+        -- (eased by its phase: it gathers at the top and fades at the foot,
+        -- never jumping back up)
+        local pe = sin(math.pi * ph) ^ 0.5
+        put(mid * f * (5.5 + 4 * sin(math.pi * ph)) * pe, x, y, 2, 3)
+        put(mid * f * 2 * pe, x, math.max(top, y - 7), 1, math.min(7, y - top))
       end
     end
     K.twinkle(ICE, hi, 13)
@@ -181,7 +192,7 @@ return function(K)
     -- the lake: the face lying in it, broken streaks rocking on out_lo's
     -- swell; a calving's wave rolling across
     put(3 + bloom + breath * 1.5, 0, WL, 128, 1)
-    for y = WL + 1, 63, 4 do
+    for y = WL + 1, 63, 5 do
       local d = (y - WL) / 26
       local yy = y + K.heave(y * 5) * (0.4 + 1.2 * lo)
       local l = (F_ice * 0.9 + 0.6) * (1 - d * 0.5)
@@ -189,24 +200,25 @@ return function(K)
       -- rises and falls, never hops)
       local y0 = floor(yy)
       local fy = yy - y0
-      local off = K.drift_x * (0.2 + d * 0.4) + y * 4.3 + T * (1.6 + 1.4 * amp)
+      local off = K.drift_x * (0.2 + d * 0.4) + y * 4.3 + T * (2.6 + 1.4 * amp)
       if fy < 0.9 then K.streaks(l * (1 - fy), y0, 5 - d * 2, 12 + floor(d * 5), off) end
       if fy > 0.1 then K.streaks(l * fy, y0 + 1, 5 - d * 2, 12 + floor(d * 5), off) end
     end
     if sw > 0.02 then
       for b = 0, 2 do
-        local y = WL + 2 + ((T * 5 + b * 8) % 24)
-        local l = sw * 3.2 * (1 - (y - WL) / 30)
+        local ph = ((T * 5 + b * 8) % 24) / 24
+        local y = WL + 2 + ph * 24
+        local l = sw * 3.2 * (1 - (y - WL) / 30) * sin(math.pi * ph)
         for x = (K.drift_x * 0.3 + b * 9) % 10 - 10, 127, 10 do put(l, x, y, 7, 1) end
       end
     end
-    K.surface(0, WL + 2, 128, 64, 1, 14, 5, 2, nat * 0.5)
+    K.surface(0, WL + 2, 128, 64, 1, 12, 4, 2, 0.12 + nat * 0.4)
     -- the water sounds: lapping and sparkle along the lake's near edge
     if nat > 0.02 then
       for k = 0, 15 do
         local x = k * 8 + sin(T * 1.2 + k) * 2
         local f = 0.5 + 0.5 * sin(T * 2.1 + k * 1.7)
-        put(nat * (3.5 + 6 * f), x, 61 - (k % 2), 5, 1)
+        put(nat * (3.5 + 6 * f), x, 61 - (k % 2), 4, 1)
         put(nat * 6 * f, x + 2, WL + 1 + (k % 3), 3, 1)
       end
     end
@@ -221,18 +233,19 @@ return function(K)
         local x = mk.x
         if mk.slot == 1 then
           -- an icicle at the face's foot drips into the lake
-          put(9 * e, x, WL - 8, 2, 7); put(6 * e, x - 1, WL - 8, 1, 4); put(6 * e, x + 2, WL - 8, 1, 3)
+          -- (a spike tapering down from the ice's lip, lit along one side)
+          put(8 * e, x - 1, WL - 10, 3, 3); put(9 * e, x, WL - 7, 2, 3); put(9.5 * e, x, WL - 4, 1, 3)
+          put(5 * e, x + 2, WL - 10, 1, 2)
           local a = (age % 1.6) / 0.5
-          if a < 1 then put(10 * e, x, WL - 1 + a * 6, 1, 2) end
+          if a < 1 then put(10 * e * sin(math.pi * a) ^ 0.5, x, WL - 1 + a * 6, 1, 2) end
           local ra = (age % 1.6) - 0.5
-          if ra > 0 then K.ring(x, WL + 6, 2 + ra * 7, 0.3, 8 * e * (1 - ra / 1.1), 16) end
+          if ra > 0 then K.ring(x, WL + 6, 2 + ra * 7, 0.3, 8 * e * (1 - ra / 1.1) * ease(ra / 0.15), 16) end
         elseif mk.slot == 2 then
           -- a runnel lighting down the face at its pitch
           local top = K.at(crest, x) + 2
           local run = clamp(age / 1.2, 0, 1)
           put(8 * e, x, top, 1, (WL - top) * run)
           put(5 * e, x + 1, top, 1, (WL - top) * run)
-          put(4 * e, x - 1, top, 1, (WL - top) * run * 0.7)
           put(6 * e, x - 3, WL + 1, 7, 1)
         elseif mk.slot == 3 then
           -- the sun off a facet: a small star, higher for a higher note

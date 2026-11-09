@@ -252,6 +252,11 @@ local function blit(L, mul, dx, wrap, soft)
       local l = g.lv * mul
       for i = 1, g.n, 4 do
         local x = g[i] + dx
+        -- (keeping the soft slide's stagger while it fades)
+        if fr > 0 then
+          q = q + 1
+          if (((q * 2654435761) >> 8) & 255) / 256 < fr then x = x + 1 end
+        end
         if wrap and x >= 128 then x = x - 128 end
         put(l, x, g[i + 1], g[i + 2], g[i + 3])
         if wrap and x + g[i + 2] > 128 then put(l, x - 128, g[i + 1], g[i + 2], g[i + 3]) end
@@ -282,6 +287,10 @@ local function blit(L, mul, dx, wrap, soft)
         end
       end
       bn[l] = n
+    elseif fr > 0 then
+      -- (a group too dim to draw still takes its turns, so the stagger
+      -- never re-deals when it brightens)
+      q = q + g.n // 4
     end
   end
 end

@@ -23,7 +23,7 @@ return function(K)
   M.incidents = {{"frog", 14}, {"dragonfly", 16}, {"petal", 18}}
 
   local BANK = 10                         -- the far bank's foot
-  local MARK_MAX = 6
+  local MARK_MAX = 4
   local OPEN_TO = {0.1, 0.55, 1, 1}      -- how far each motif's flower opens
   local marks
 
@@ -95,7 +95,7 @@ return function(K)
   -- a flower opening on the water: o = 0 bud .. 1 full
   local function flower(x, y, o, l)
     if l < 0.3 then return end
-    l = math.min(l, 10.5)
+    l = math.min(l, 8.5)
     -- its stem and the pad of water round it
     put(l * 0.35, x - 3, y + 1, 7, 1)
     if o < 0.35 then

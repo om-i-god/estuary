@@ -766,14 +766,18 @@ end
 -- what really moves (a bird, a drifting wisp): a dither that crawls, a
 -- dash that blinks on and off or a texture that re-lays itself shows up
 -- as many pixels jumping at once
+-- the same for changes of 2 levels or more, with its own bound: a crawl
+-- low in the levels (1 to 3) shows here
 local STILL_MAX = 0.003
-local function jump_rate(fr, a, b)
+local STILL2_MAX = 0.006
+local function jump_rate(fr, a, b, k)
+  k = k or 3
   local n = 0
   for i = a, b do
     local x, y = fr[i - 1], fr[i]
     for p = 0, 8191 do
       local d = x[p] - y[p]
-      if d >= 3 or d <= -3 then n = n + 1 end
+      if d >= k or d <= -k then n = n + 1 end
     end
   end
   return n / (b - a + 1) / 8192
@@ -782,8 +786,10 @@ for th, name in ipairs(NAMES) do
   test("visuals " .. name .. " still areas stay still", function()
     local st = run(th, "silence", {frames = 220, keep = true})
     local r = jump_rate(st.frames, 101, 220)
-    if REPORT then print(string.format("stillness %-12s %.5f", name, r)) end
+    local r2 = jump_rate(st.frames, 101, 220, 2)
+    if REPORT then print(string.format("stillness %-12s %.5f  (2+: %.5f)", name, r, r2)) end
     assert(r <= STILL_MAX, string.format("%.4f of the screen jumps 3+ levels a frame at silence (max %.4f)", r, STILL_MAX))
+    assert(r2 <= STILL2_MAX, string.format("%.4f of the screen jumps 2+ levels a frame at silence (max %.4f)", r2, STILL2_MAX))
   end)
 end
 -- (and the test can see a crawl: a small patch of dither, 16 x 4 px,
@@ -797,6 +803,16 @@ test("visuals stillness test catches a crawling dither", function()
   local r = jump_rate(st.frames, 101, 220)
   assert(r > STILL_MAX, string.format("an injected crawl reads %.4f, under the %.4f bound", r, STILL_MAX))
 end)
+-- (and a low crawl too: 64 px of dither stepping between levels 1 and 3)
+test("visuals stillness test catches a low crawling dither", function()
+  local st = run(1, "silence", {frames = 220, keep = true, post = function(f)
+    for y = 30, 33 do
+      for x = 50, 65 do RAST.buf[y * 128 + x] = (x + y + f) % 2 == 0 and 3 or 1 end
+    end
+  end})
+  local r2 = jump_rate(st.frames, 101, 220, 2)
+  assert(r2 > STILL2_MAX, string.format("an injected low crawl reads %.4f, under the %.4f bound", r2, STILL2_MAX))
+end)
 
 -- the onsets test, for what the conductor does on its edges: a chord
 -- change (and another mid-glide), the bar changing length under a meter
@@ -804,7 +820,37 @@ end)
 -- does, on a barline. each is checked like an onset (the frames after it
 -- never jump more than ~3 typical frames' change), and what the events add
 -- to the picture never jumps by more than POP_K typical frames
-local function edge_run(th, ev)
+-- the largest local jump in what the events add to the picture (event
+-- run minus the quiet run), frame to frame: the change summed over each
+-- 3 x 3 patch, per pixel. a mark that slides a pixel moves its light
+-- within the patch and barely registers; a block that appears or vanishes
+-- at full light in one frame shows here however small it is
+local PIX_MAX = 4
+local D, R3 = {}, {}
+local function pix_pop(a, b, f0, f1)
+  local worst, wf, wp = 0, f0, 0
+  for f = f0 + 1, f1 do
+    local fa, fb, pa, pb = a[f], b[f], a[f - 1], b[f - 1]
+    for p = 0, 8191 do D[p] = (fa[p] - fb[p]) - (pa[p] - pb[p]) end
+    -- (rows of 3 first, then columns of those)
+    for y = 0, 63 do
+      local r = y * 128
+      for x = 0, 127 do
+        R3[r + x] = D[r + x] + (x > 0 and D[r + x - 1] or 0) + (x < 127 and D[r + x + 1] or 0)
+      end
+    end
+    for y = 0, 63 do
+      local r = y * 128
+      for x = 0, 127 do
+        local v = R3[r + x] + (y > 0 and R3[r + x - 128] or 0) + (y < 63 and R3[r + x + 128] or 0)
+        if v < 0 then v = -v end
+        if v > worst then worst, wf, wp = v, f, r + x end
+      end
+    end
+  end
+  return worst / 9, wf, wp
+end
+local function edge_run(th, ev, post)
   env()
   local V = include("lib/visuals"); V.init()
   local S = mkS(); S.bloom = 0.5; S.section = "flow"
@@ -833,6 +879,7 @@ local function edge_run(th, ev)
     if ev and f == 180 then S.chord = CHORDS[2]; V.event("chord", S) end
     for nm, x in pairs(BASE_EARS) do V.audio(nm, x) end
     screen.clear(); V.draw(cur, S, 1 / FPS)
+    if post then post(f) end
     frames[f] = copybuf()
   end
   return frames
@@ -853,11 +900,33 @@ for th, name in ipairs(NAMES) do
       end
     end
     local step, f = pop_step(ev, quiet, 90, 320)
-    if REPORT then print(string.format("edges %-12s median %.4f onset %.4f at %d  pop %.4f at %d", name, med, worst, wf, step, f)) end
+    local px, pf, pp = pix_pop(ev, quiet, 90, 320)
+    if REPORT then print(string.format("edges %-12s median %.4f onset %.4f at %d  pop %.4f at %d  local %.2f at %d (%d,%d)", name, med, worst, wf, step, f, px, pf, pp % 128, pp // 128)) end
+    assert(px <= PIX_MAX, string.format("a 3 x 3 patch jumps %.2f levels a pixel at frame %d (%d, %d)", px, pf, pp % 128, pp // 128))
     assert(worst <= 3 * math.max(wm, 0.01), string.format("a %.4f jump at frame %d vs a median of %.4f", worst, wf, wm))
     assert(step <= POP_K * math.max(med, 0.01), string.format("a %.4f pop at frame %d vs a median of %.4f", step, f, med))
   end)
 end
+-- (and the pixel check sees a small block lit at full level on a chord
+-- change: 6 x 6 px at level 8, the frame the chord moves)
+test("visuals pixel pop test catches a block lit at once", function()
+  local quiet = edge_run(1)
+  local ev = edge_run(1, true, function(f)
+    if f >= 100 and f < 130 then
+      for y = 20, 25 do for x = 60, 65 do RAST.buf[y * 128 + x] = 8 end end
+    end
+  end)
+  local px = pix_pop(ev, quiet, 90, 320)
+  assert(px > PIX_MAX, "an injected block jumps only " .. px .. " levels")
+  -- (a 3 x 3 block too)
+  local ev3 = edge_run(1, true, function(f)
+    if f >= 100 and f < 130 then
+      for y = 20, 22 do for x = 60, 62 do RAST.buf[y * 128 + x] = 8 end end
+    end
+  end)
+  local px3 = pix_pop(ev3, quiet, 90, 320)
+  assert(px3 > PIX_MAX, "an injected 3 x 3 block jumps only " .. px3 .. " levels")
+end)
 -- the theme cycle moves on a barline: into this place from the one before
 -- and out to the next, each through black, never a cut
 for th, name in ipairs(NAMES) do
@@ -876,4 +945,4 @@ end
 -- for ad-hoc scripts (contact sheets, per-frame diffs): dofile this file
 -- with test() stubbed and call VIS_HARNESS.run(theme, scenario, {keep = true})
 VIS_HARNESS = {run = run, bufdiff = bufdiff, react_run = react_run, jump_rate = jump_rate, edge_run = edge_run,
-  inc_run = inc_run, pop_step = pop_step, frame_median = frame_median}
+  inc_run = inc_run, pop_step = pop_step, frame_median = frame_median, pix_pop = pix_pop}

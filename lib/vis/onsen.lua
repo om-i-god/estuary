@@ -55,7 +55,7 @@ return function(K)
       local t = floor(slope[c] + 0.5)
       rec(2.4 + 0.5 * K.hash(c, 1404), c * 2, t, 2, 1)
       for y = t + 2, 33 do
-        if K.hash(c * 64 + y, 1405) < 0.06 then rec(1.2, c * 2, y, 2, 1) end
+        if K.hash(c * 64 + y, 1405) < 0.035 then rec(1.2, c * 2, y, 2, 1) end
       end
     end
   end)
@@ -69,12 +69,23 @@ return function(K)
   local rocks = K.bake(function(rec)
     for _, r in ipairs(ROCK) do
       local x, y, hw, h = r[1], r[2], r[3], r[4]
-      -- (a rounded stone, lit a little on its left, never banded)
+      -- (a rounded mass in hand-made strokes: thicker and lit toward its
+      -- upper left, thinning to its foot, its outline soft)
+      local q = 0
       for j = 0, h do
-        local w = hw * math.sqrt(1 - (j / (h + 1)) ^ 2)
-        -- (its shoulders solid, its flank in broken strokes)
-        if j >= h - 2 then rec(1.2, x - w, y - j + h * 0.4, w * 2, 1)
-        elseif (j + floor(x)) % 2 == 0 then rec(1, x - w + 1, y - j + h * 0.4, math.max(1, w * 2 - 2), 1) end
+        local w = hw * math.sqrt(math.max(0, 1 - (j / (h + 1)) ^ 2))
+        local yy = floor(y - j + h * 0.4)
+        local xx = x - w
+        while xx < x + w do
+          q = q + 1
+          local len = 2 + floor(3 * K.hash(q + floor(x) * 50, 1423))
+          local u = (xx - (x - w)) / math.max(1, 2 * w)
+          local dens = 0.25 + 0.4 * (j / (h + 1)) + 0.2 * (1 - u)
+          if K.hash(q + floor(x) * 50, 1424) < dens then
+            rec(1 + 0.8 * (1 - u) * (j / (h + 1)) + 0.3 * K.hash(q, 1425), xx, yy, math.min(len, x + w - xx), 1)
+          end
+          xx = xx + len
+        end
       end
     end
   end)
@@ -179,7 +190,7 @@ return function(K)
       if l then
         local d = (y - PY) / PRY
         if y % 2 == 0 then K.dither_row((0.18 + 0.22 * bloom + 0.9 * breath) * (1 - abs(d) * 0.5), y, nil, floor(l + 1), floor(r)) end
-        if (y - PY) % 4 == 0 then
+        if (y - PY) % 5 == 0 and y > PY - 4 then
           local yy = y + K.heave(y * 4) * (0.3 + 0.8 * lo)
           K.streaks(1.4 + 0.6 * bloom + breath * 1.2, yy, 4, 12, K.drift_x * 0.2 + y * 7 + T * (0.6 + 1.5 * amp), nil, nil, floor(l + 2), floor(r - 1))
         end
@@ -210,11 +221,11 @@ return function(K)
         local x = PX - 34 + k * 3.5 + sin(T + k) * 1.5
         local y = PY + 6 - ph * 9 - (k % 3) * 2
         put(nat * 13 * sin(math.pi * ph), x, y, 2, 1)
-        if k % 2 == 0 then K.ring(x, y + 1, 1 + ph * 3, 0.3, nat * 5 * (1 - ph), 8) end
+        if k % 2 == 0 then K.ring(x, y + 1, 1 + ph * 3, 0.3, nat * 5 * (1 - ph) * ease(ph / 0.15), 8) end
       end
       for q = 0, 5 do
         local ph = (T * 1.4 + q / 6) % 1
-        put(nat * (4 + 2 * sin(T * 3 + q)) * (1 - ph * 0.5), 20 + ph * 6 + sin(q) , PY - 4 + ph * 7, 2, 1)
+        put(nat * (4 + 2 * sin(T * 3 + q)) * sin(math.pi * ph), 20 + ph * 6 + sin(q), PY - 4 + ph * 7, 2, 1)
       end
     end
     -- the rocks round the pool, their snow caps
@@ -279,26 +290,33 @@ return function(K)
       elseif k % 2 == 0 then
         put((4 + bloom) * (1 - slide), b[1], y - 1, 3, 1)
       end
-      if k % 7 == 3 then put(2, b[1] + 1, y + 1, 1, 2 + (k % 3)) end
+      -- (a few twigs leaving it on a slant)
+      if k % 9 == 4 then put(2.2, b[1] - 1, y - 1, 1, 1); put(2, b[1] - 2, y - 2, 1, 1); put(1.8, b[1] - 3, y - 3, 1, 1) end
     end
     -- the steam: wisps rising off the water and curling, as high and as
     -- many as out_mid lets them; a gust clears it and it gathers again
+    -- (four soft columns: puffs welling up off the water, each widening
+    -- and fading as it rises and curling more the higher it goes, over a
+    -- faint haze lying on the pool)
     local clear = 1 - 0.85 * sw
-    local nw = 8 + mid * 8
-    local tall = 20 + 14 * mid
-    for k = 1, math.min(#WISP, floor(nw) + 1) do
-      local w = WISP[k]
-      local f = clamp(nw - k + 1, 0, 1) * clear
-      if f > 0.01 then
-        local ph = (steam_t * w[3] + w[2]) % 1
-        local x0 = w[1] + sw * 20 * ph
-        -- (a curling ribbon: a few soft pieces trailing up behind its head)
-        for q = 0, 5 do
-          local u = clamp(ph - q * 0.05, 0, 1)
-          local x = x0 + sin(u * 6 + k + T * 0.4) * (1.5 + 6 * u) * (0.6 + 0.6 * mid) + sw * 14 * u
-          local y = PY - 4 - u * tall
-          local l = (2.4 + 1.6 * bloom + 1.6 * mid) * sin(math.pi * u) ^ 0.6 * f * (1 - q * 0.13)
-          K.dash(l, x - 1, y, 2 + (q % 2))
+    local tall = 18 + 16 * mid
+    local hz = (0.35 + 0.35 * mid + 0.2 * bloom) * clear
+    for y = PY - PRY - 3, PY - PRY + 3 do
+      local l, r = pool(math.max(y, PY - PRY + 1))
+      if l then K.dither_row(hz * (1 - math.abs(y - (PY - PRY)) / 5), y, nil, floor(l + 4), floor(r - 4)) end
+    end
+    for c = 1, 4 do
+      local cx = PX - 27 + (c - 1) * 18 + 4 * sin(T * 0.07 + c)
+      for j = 0, 6 do
+        local u = (steam_t * (0.8 + 0.1 * c) + j / 7 + c * 0.17) % 1
+        local r = 1.5 + 4 * u
+        local x = cx + sin(u * 3 + T * 0.45 + c * 1.7) * (0.5 + 7 * u * u) * (0.6 + 0.8 * mid) + sw * 16 * u
+        local y = PY - 3 - u * tall
+        local l = (2.2 + 1.2 * mid + 0.6 * bloom) * (1 - u) ^ 0.9 * ease(u / 0.12) * clear
+        if l > 0.15 then
+          K.dot(l * 1.35, x, y - 0.5)
+          K.dash(l, x - r, y + 0.5, floor(2 * r))
+          K.dash(l * 0.6, x - r * 0.6, y + 1.5, floor(1.2 * r))
         end
       end
     end

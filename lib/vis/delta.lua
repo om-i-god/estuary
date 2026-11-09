@@ -62,12 +62,15 @@ return function(K)
       local cx = coast(y)
       while x < cx - 1 do
         k = k + 1
-        local len = 1 + floor(3 * K.hash(k, 1301))
+        local len = 2 + floor(4 * K.hash(k, 1301))
         local near = 99
         for c = 1, 7 do near = math.min(near, abs(y - ych(c, x))) end
-        local d = 0.03 + 0.1 * clamp((near - 1.5) / 6, 0, 1) + 0.04 * sin(x * 0.07 + y * 0.3)
-        if K.hash(k, 1302) < d then rec(K.hash(k, 1303) < 0.2 and 1.8 or 1, x, y, math.min(len, cx - x), 1) end
-        x = x + len + 1 + floor(3 * K.hash(k, 1304))
+        -- (pale sand piling between the channels: thicker and brighter on
+        -- the bars' crests, thinning to wet sand at the water's edge)
+        local crest = clamp((near - 1.5) / 5, 0, 1)
+        local d = 0.04 + 0.22 * crest + 0.05 * sin(x * 0.07 + y * 0.3)
+        if K.hash(k, 1302) < d then rec(K.hash(k, 1303) < 0.15 + 0.3 * crest and 1.9 or 1.1, x, y, math.min(len, cx - x), 1) end
+        x = x + len + floor(2 * K.hash(k, 1304))
       end
     end
   end)
@@ -114,7 +117,7 @@ return function(K)
 
   -- the gold sky on the far line (its strength set each frame)
   local F_sky = 1
-  local function sky(y) return F_sky * (0.15 + 0.35 * (y / HZ)) end
+  local function sky(y) return F_sky * (0.08 + 0.25 * (y / HZ)) end
 
   function M.draw()
     local T = K.T
@@ -133,7 +136,7 @@ return function(K)
     K.hline(2 + 1.5 * bloom, HZ, 0, 128, 6)
     -- the sea, its edge coming in with a swell
     local push = sw * 10
-    for y = HZ + 1, 63, 3 do
+    for y = HZ + 1, 63, 4 do
       local cx = coast(y) - push
       local d = (y - HZ) / 58
       local off = K.drift_x * (0.3 + d * 0.4) + y * 5.3 + T * 0.6
@@ -182,8 +185,6 @@ return function(K)
           put(l, x, y, 3, w)
           -- (the main ones carry a soft second row where the light runs)
           if main then put(l * 0.45 * K.ramp(sh, -0.2, 0.6), x, floor(y) + 1, 3, 1) end
-          -- (a swell widens the main ones by a fraction of a row)
-          if main and sw > 0.02 then put(l * sw * 0.8, x, floor(y) - 1, 3, 1) end
         end
       end
     end
@@ -194,7 +195,9 @@ return function(K)
         local x = (k * 17 + fp * 0.8 + c * 11) % 92
         local y = ych(c, x)
         local f = 0.5 + 0.5 * sin(T * 2.3 + k * 1.9)
-        K.dash(mid * (3.5 + 6 * f), x, y - 2, 1, CH[c][5] + 3)
+        -- (faded at both ends of its run, so the wrap is never seen)
+        local w = K.ramp(x, 0, 6) * K.ramp(92 - x, 0, 6)
+        K.dash(mid * (3.5 + 6 * f) * w, x, y - 2, 1, CH[c][5] + 3)
       end
     end
     -- the water sounds: the shallows shimmer along the bars' edges
@@ -223,7 +226,11 @@ return function(K)
         local x = mk.x0 + age * (9 + 6 * amp)
         local y = ych(c, x)
         local cx = coast(y) - push
+        -- (the light dims as it nears the coast, and its glints come up as
+        -- it goes out over the sea: a hand-over, never a switch)
+        local land = K.ramp(cx - x, 0, 8)
         if x < cx then
+          e = e * (0.15 + 0.85 * land)
           if mk.slot == 1 then
             K.dash(10 * e, x - 2, y - 1, 5, 3)
             for q = 1, 6 do put(7 * e * (1 - q / 7), x - 1 - q * 2, ych(c, x - q * 2) - 1, 2, 3) end
@@ -239,8 +246,9 @@ return function(K)
         else
           -- reaching the sea it fans out into glints
           local s = x - cx
+          local g = 7 * e * math.max(0, 1 - s / 30) * (0.15 + 0.85 * K.ramp(s, 0, 6))
           for q = -2, 2 do
-            put(7 * e * math.max(0, 1 - s / 30), cx + s * 0.6 + abs(q) * 2, y + q * (1 + s * 0.15), 2, 1)
+            put(g, cx + s * 0.6 + abs(q) * 2, y + q * (1 + s * 0.15), 2, 1)
           end
         end
       end

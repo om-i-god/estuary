@@ -194,9 +194,17 @@ return function(K)
   for k = 1, 8 do DAPPLE[k] = {8 + (k - 1) * 15 + 6 * K.hash(k, 224), 18 + 30 * K.hash(k, 225), 4 + 5 * K.hash(k, 226), K.hash(k, 227) * 6} end
   local function sample(u, v) return u * 127, 15 + v * 36 end
 
+  -- a stone's own put: everything it draws fades with its presence
+  local SPF = 1
+  local function sp(l, x, y, w, h) put(l * SPF, x, y, w, h) end
+
   local function stone(s, i, bloom, hi, sw)
     local x, y, rx, ry, p = s[1], s[2], s[3] * s[5], s[4] * s[5], s[5]
-    if rx < 1.2 then return end
+    -- (a stone whose tone has gone shrinks to a pebble and fades: it never
+    -- vanishes at the size it had)
+    if p < 0.01 then return end
+    SPF = ease(p / 0.6)
+    rx, ry = math.max(rx, 1.5), math.max(ry, 1.1)
     local T = K.T
     local body = (2 + 0.9 * bloom) * (0.5 + 0.5 * p) * (1 - 0.35 * sw) + 1.6 * kick[i]
     local top = body + 1.6 + 2.2 * K.chord_glow + 1.2 * K.breath
@@ -211,25 +219,25 @@ return function(K)
         local x0 = x - hw + (K.hash(i * 32 + dy, 229) - 0.5) * 1.2
         local x1 = x0 + 2 * hw + 1
         local a, b = math.ceil(x0), floor(x1)
-        if b > a then put(lv, a, y + dy, b - a, 1) end
-        put(lv * (a - x0), a - 1, y + dy, 1, 1)
-        put(lv * (x1 - b), b, y + dy, 1, 1)
+        if b > a then sp(lv, a, y + dy, b - a, 1) end
+        sp(lv * (a - x0), a - 1, y + dy, 1, 1)
+        sp(lv * (x1 - b), b, y + dy, 1, 1)
       end
     end
     -- its wet crown catching the light, glinting with out_hi, and with a
     -- note near it
     local kk = kick[i]
-    put(math.min(12, top + 1 + hi * 5 * math.max(0, sin(T * 4.3 + i * 2)) + 4 * kk), x - rx * 0.4, y - rows, math.max(1, rx * 0.6), 1)
+    sp(math.min(12, top + 1 + hi * 5 * math.max(0, sin(T * 4.3 + i * 2)) + 4 * kk), x - rx * 0.4, y - rows, math.max(1, rx * 0.6), 1)
     if kk > 0.03 then
-      put(6 * kk, x - rx * 0.4, y - rows + 1, math.max(1, rx * 1.2), 1)
-      put(5 * kk, x - 1, y - rows - 3, 1, 2); put(5 * kk, x - 1, y - rows + 2, 1, 2)
-      put(5 * kk, x - 4, y - rows, 2, 1); put(5 * kk, x + 2, y - rows, 2, 1)
+      sp(6 * kk, x - rx * 0.4, y - rows + 1, math.max(1, rx * 1.2), 1)
+      sp(5 * kk, x - 1, y - rows - 3, 1, 2); sp(5 * kk, x - 1, y - rows + 2, 1, 2)
+      sp(5 * kk, x - 4, y - rows, 2, 1); sp(5 * kk, x + 2, y - rows, 2, 1)
     end
     -- the pillow of water piled in front of it
     local pl = 2.5 + 2 * K.energy + 3 * A[K.NAT] + 1.5 * sw
     for j = -2, 2 do
       local yy = y + j * ry * 0.55
-      put(pl * (1 - abs(j) * 0.18) + K.bj(i * 8 + j), x - rx - 2 + abs(j) * rx * 0.25 + K.heave(x + j) * 0.3, yy, 2, 1)
+      sp(pl * (1 - abs(j) * 0.18) + K.bj(i * 8 + j), x - rx - 2 + abs(j) * rx * 0.25 + K.heave(x + j) * 0.3, yy, 2, 1)
     end
     -- the wake: two lines of riffles opening downstream, longer and
     -- brighter with out_mid
@@ -241,8 +249,8 @@ return function(K)
       local f = sin(k * 1.7 - T * 3 + i)
       local l = ((2.2 + 3.2 * mid) * math.max(0, 1 - k / (nf + 1)) + 0.8 * K.ramp(f, 0.2, 0.7)) * clamp(nf + 1 - k, 0, 1)
       local xx = x + rx + k * 3
-      put(l, xx, y - ry - k * 0.8 + K.heave(xx) * 0.3, 2, 1)
-      put(l, xx, y + ry + k * 0.8 + K.heave(xx) * 0.3, 2, 1)
+      sp(l, xx, y - ry - k * 0.8 + K.heave(xx) * 0.3, 2, 1)
+      sp(l, xx, y + ry + k * 0.8 + K.heave(xx) * 0.3, 2, 1)
     end
   end
 

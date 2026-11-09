@@ -283,8 +283,19 @@ return function(K)
         local x0, y0 = 30 + inc.s * 60, CY + (inc.s2 - 0.5) * 20
         local x = x0 + sin(inc.age * 3) * 6 * (1 - fall) + math.max(0, inc.age - 4) * 2.5
         local y = y0 - (1 - fall) * 22 + math.max(0, inc.age - 4) * 0.8
-        local a = inc.age * (fall < 1 and 4 or 0.4)
-        for q = -3, 3 do put(9 * e * (1 - abs(q) * 0.12), x + cos(a) * q, y + sin(a) * q * 0.6, 2, 2) end
+        local a = math.min(inc.age, 4) * 4 + math.max(0, inc.age - 4) * 0.4
+        -- (a leaf: a pointed oval round a bright midrib, its stalk trailing)
+        local ca, sa = cos(a), sin(a) * 0.6
+        for q = -5, 5 do
+          local w = 2.2 * (1 - (q / 6) ^ 2)
+          local px_, py_ = x + ca * q, y + sa * q
+          put(9.5 * e, px_, py_, 1, 1)
+          for s = 1, floor(w + 0.5) do
+            put(6.5 * e * (1 - s * 0.15), px_ - sa * s * 1.4, py_ + ca * s * 0.8, 1, 1)
+            put(6.5 * e * (1 - s * 0.15), px_ + sa * s * 1.4, py_ - ca * s * 0.8, 1, 1)
+          end
+        end
+        put(6 * e, x - ca * 7, y - sa * 7, 1, 1); put(5 * e, x - ca * 8, y - sa * 8, 1, 1)
         put(3 * e, x - 3, y0 + 3, 7, 1)                   -- its shadow on the bed
         if fall >= 1 then
           local ra = inc.age - 4
@@ -295,10 +306,10 @@ return function(K)
         local glides = floor(inc.age / 1.4)
         local f = ease(clamp((inc.age % 1.4) / 0.45, 0, 1))
         local x = 26 + inc.s * 14 + (glides + f) * 7
-        local y = CY - 8 + inc.s2 * 16 + sin(glides * 1.9) * 4
-        put(9 * e, x - 2, y, 5, 1); put(6 * e, x - 1, y - 1, 3, 1)
+        local y = CY - 8 + inc.s2 * 16 + sin((glides + f) * 1.9) * 4
+        put(10 * e, x - 2, y, 5, 1); put(7 * e, x - 1, y - 1, 3, 1); put(5 * e, x - 3, y + 1, 7, 1)
         for k = -1, 1, 2 do
-          put(6 * e, x - 4, y + k * 2, 2, 1); put(6 * e, x + 3, y + k * 2, 2, 1)
+          put(7.5 * e, x - 5, y + k * 2, 3, 1); put(7.5 * e, x + 3, y + k * 2, 3, 1)
           local rr = 1.2 + 1.5 * sin(math.pi * f)
           K.ring(x - 3, y + k * 2, rr, 0.6, 4.5 * e, 8)
           K.ring(x + 3, y + k * 2, rr, 0.6, 4.5 * e, 8)
