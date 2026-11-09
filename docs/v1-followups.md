@@ -108,6 +108,18 @@ Engine change: run SYSTEM > RESTART once before loading. On the Mac, `test/sc/ru
 - Palettes: with 20 palettes, play several `new track`s. Every palette should come round before any repeats, and each should feel like one record.
 - Old psets: load a pset saved with sounds v2 and confirm its pinned palette, pad sound and voices are unchanged.
 
+## Sounds v4: on-device listening checks
+Engine change: run SYSTEM > RESTART once before loading. On the Mac, `test/sc/run.sh` measures every voice and pad alone: the 22 voices sit within about 0.8 dB RMS of each other (the four new ones within 0.2 dB of the old ones' -32 dB), the 10 pads within about 1.6 dB (hum and bowed at -25 dB, in the middle of the old ones). It renders a demo for every palette, including pavilion, conservatory, observatory, arboretum, aquarium and gallery. These need the device and your ears:
+- New voices by ear:
+  - ocarina: is it round and breathy, clearly purer than the flute? The chiff (and the few-cents settle under it) should read as the note speaking, never as a click or out of tune.
+  - bowl: the slow beating (about 0.4-0.8 Hz on the fundamental, 0.8-1.4 Hz on the octave) should feel like a bowl's wah, never sour or ominous. Does the very long ring (about 9 s at middle C) muddy busy passages?
+  - musicbox: sweet and tiny; the per-note detune (up to about 6 cents) should sound like a real comb, never out of tune against the pad.
+  - chime: rounder than the bell, never clangy on motif 2/4 high notes; the slow swing across the speakers should be gentle.
+- New pads: hum should read as a soft closed-mouth choir rather than an organ; bowed should swell in note by note (the upper notes a little later) to a pure glassy tone, with the bow hair barely there.
+- CPU, with bowl and bowed on the Pi: on the Mac, 32 overlapping notes cost about the same as 32 of piano, bell or horn for bowl and ocarina (about 4.5% each), less for chime (3%) and musicbox (1.4%); 8 bowed pads cost about 1.3x 8 warm pads, hum about 1.1x. The bowl's ring is the risk: in conservatory, observatory, aquarium and gallery it sits in a low slot and rings about 9 s, so a busy stretch can hold well over a dozen at once. Watch the norns CPU readout on a busy stretch of observatory (bowl over bowed) and while bowed crossfades into the next chord. If it runs hot, the bowl's ring can be shortened in `lib/Engine_Estuary.sc` (the `9.0 * ks` decay).
+- Palettes: with 26 palettes, play several `new track`s. The six new ones come in once the older ones have no unheard voices left to bring (the seventh or eighth track) and every palette still comes round before any repeats. Pin each new one and check it changes the sounds straight away.
+- Old psets: load a pset saved with sounds v3 and confirm its pinned palette, pad sound and voices are unchanged.
+
 ## Meter: on-device listening checks
 No engine change. PARAMS > ESTUARY > meter; the sim checks every meter against the rules (`METER=5/4 lua test/sim.lua 900 2 4`, and 3/4, 6/8, 7/8, plus `METER=walk` for changes mid-play), and 4/4 replays the old engine stream exactly. These need ears:
 - 4/4: load a saved pset and a fresh boot; it should sound exactly as before, with the meter param on 4/4.

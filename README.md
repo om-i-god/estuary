@@ -54,7 +54,7 @@ the first time estuary loads it sets the norns clock to 72 bpm; after that the t
 
 ## sounds
 
-the instruments are modelled on the gear of 80s environmental music: soft FM electric piano and bells, sine tones, mallets, plucked strings, a soft voice, glassy digital pads and gentle analog strings, all through the same warm echo and hall. nothing is distorted, every note starts softly (no clicks), and at the same velocity and brightness every voice is equally loud, so any palette sits in the same mix. brightness changes the tone (more FM index, harder mallet, more upper partials), not the level.
+the instruments are modelled on the gear of 80s environmental music: soft FM electric piano and bells, sine tones, mallets, plucked strings, a soft voice, vessel flute, singing bowl, music box and chimes, glassy digital pads and gentle analog strings, all through the same warm echo and hall. nothing is distorted, every note starts softly (no clicks), and at the same velocity and brightness every voice is equally loud, so any palette sits in the same mix. brightness changes the tone (more FM index, harder mallet, more upper partials), not the level.
 
 **motif voices** (PARAMS > SOUND > motif 1-4 voice):
 - **rhodes:** a DX-style FM electric piano. a warm body with a short bell-like tine ping on top, harder and brighter with velocity, a gentle stereo tremolo; high notes fade a little sooner.
@@ -75,6 +75,10 @@ the instruments are modelled on the gear of 80s environmental music: soft FM ele
 - **steelpan:** a soft, round steel pan. a mellow mallet with the octave blooming in just after the strike, never clangy.
 - **guitar:** a warm nylon-string pluck, fingered a fifth of the way along the string, with a breath of finger noise.
 - **horn:** a soft 80s analog brass voice: a filtered saw whose filter swells open after a slow-ish onset and settles, with a little chorus on one side. it holds for the length of the note and never blares.
+- **ocarina:** a round vessel flute, purer than the flute: a near-pure tone with a soft chiff as the note speaks (it settles from a few cents flat), a breath under it and a slow vibrato once it has settled. it holds for the length of the note.
+- **bowl:** a singing bowl struck softly. near-harmonic modes that each beat slowly against a close partner (the bowl's slow wah), a brief glint on the strike, and a very long, bright ring that sways between the speakers.
+- **musicbox:** a tiny comb tine plucked by a pin: soft and sweet, each note a few cents off true like the tines of a real music box, with a brief glint and a tiny tick.
+- **chime:** a soft wind-chime tube with a padded striker. rounder than the bell: a long round fundamental with the tube's overtones kept low and short, swinging slowly across the speakers as it rings.
 
 **pad characters** (PARAMS > SOUND > pad sound):
 - **warm:** triangle and sine with a soft sub, each note drifting and breathing slowly under a moving low-pass.
@@ -85,8 +89,10 @@ the instruments are modelled on the gear of 80s environmental music: soft FM ele
 - **shimmer:** a soft core with a halo an octave up that arrives slowly after the chord and breathes on each note, mirrored across the stereo field.
 - **tape:** warm and rounded, with a little low-end bump and a very slow drift of about two cents that moves every note together, like tape speed. it never beats sour.
 - **reed:** a soft harmonium: gently filtered reeds with the bellows breathing slowly in the level.
+- **hum:** a wordless closed-mouth choir, very soft: two singers on each note a fraction of a hertz apart, mostly fundamental, each note's breath swelling on its own.
+- **bowed:** a bowed vibraphone or glass rim: each note swells in on its own slow bow to a pure, glassy tone, with a faint shine growing in above it and the softest trace of bow hair.
 
-**palettes.** a palette is one record's worth of sound: a voice for each motif, a pad character, and a small lean in brightness and echo/reverb. with **palette** on **auto**, every new track picks one: the choice is seeded, and every palette comes round once before any comes again, favouring the ones whose voices you haven't heard yet, so the same one never comes twice in a row (rebuilding the same seed keeps it). pick a name to pin it: it applies at once and on every new track after. **motif voice** and **pad sound** on **auto** follow the palette; set them by name to override it.
+**palettes.** a palette is one record's worth of sound: a voice for each motif, a pad character, and a small lean in brightness and echo/reverb. with **palette** on **auto**, every new track picks one: the choice is seeded, and every palette comes round once before any comes again, favouring the ones whose voices you haven't heard yet, so the same one never comes twice in a row (rebuilding the same seed keeps it). palettes are weighed release by release, oldest first, so a seed's first tracks keep the palettes they had before the newest six were added, and the newest come in as soon as the older ones have nothing new to bring. pick a name to pin it: it applies at once and on every new track after. **motif voice** and **pad sound** on **auto** follow the palette; set them by name to override it.
 
 | palette | motif 1 | motif 2 | motif 3 | motif 4 | pad |
 |---|---|---|---|---|---|
@@ -110,6 +116,12 @@ the instruments are modelled on the gear of 80s environmental music: soft FM ele
 | promenade | horn | steelpan | rhodes | dulcimer | strings |
 | cloister | choir | dulcimer | horn | bell | glass |
 | courtyard | horn | steelpan | guitar | koto | tape |
+| pavilion | ocarina | musicbox | kalimba | chime | hum |
+| conservatory | piano | chime | bowl | musicbox | bowed |
+| observatory | bowl | chime | sine | glock | bowed |
+| arboretum | guitar | musicbox | ocarina | chime | warm |
+| aquarium | bowl | celesta | ocarina | glass | shimmer |
+| gallery | ocarina | vibes | bowl | musicbox | hum |
 
 motifs 2 and 4 play an octave above 1 and 3, so the small high voices sit there. the new voices live in the engine: after updating, run **SYSTEM > RESTART** once before loading the script. saved psets keep their voices (the old choices keep their positions in every list).
 
@@ -174,7 +186,7 @@ screen: key and mode top left with the chord below (and the meter beside it on t
 - **MIX:** space (echo + reverb), tone, echo time (1/8, 1/4, 3/8, 1/2), echo feedback (held to 0.6 at 1/8), reverb size, level
 - **NATURE:** bed level, swell level, moments (off / rare / some), moment level, nature tone
 - **LEVELS:** motif level, pad level, pedal level
-- **SOUND:** palette (auto, or pin one by name), pad sound (auto, warm, strings, glass, air, organ, shimmer, tape, reed), motif 1-4 voice (auto, rhodes, bell, sine, marimba, vibes, celesta, kalimba, flute, glass, harp, koto, choir, glock, piano, dulcimer, steelpan, guitar, horn); auto follows the palette. react (0-1), react source (water / room / self / all)
+- **SOUND:** palette (auto, or pin one by name), pad sound (auto, warm, strings, glass, air, organ, shimmer, tape, reed, hum, bowed), motif 1-4 voice (auto, rhodes, bell, sine, marimba, vibes, celesta, kalimba, flute, glass, harp, koto, choir, glock, piano, dulcimer, steelpan, guitar, horn, ocarina, bowl, musicbox, chime); auto follows the palette. react (0-1), react source (water / room / self / all)
 - **LISTEN:** follow input key, input gate (dB), hold before move (s)
 - **MOTIF OUT / PAD OUT / PEDAL OUT:** output (internal / midi / both), midi device, midi channel (defaults: motifs ch 3, pad ch 2, pedal ch 1)
 - **MOTIF OUT > motifs to midi:** all four on one channel, a single motif (for a mono synth: the others keep playing on norns), or each motif on its own channel. velocity follows the part's fade and the note length follows the note
