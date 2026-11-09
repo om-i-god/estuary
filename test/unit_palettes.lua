@@ -51,7 +51,7 @@ test("palettes: old psets keep their voices (option order only grows)", function
 end)
 
 test("palettes: every palette is well formed", function()
-  assert(#P.PALETTES >= 16 and #P.PALETTES <= 22, "16-22 palettes")
+  assert(#P.PALETTES >= 16 and #P.PALETTES <= 26, "16-26 palettes")
   local names, used_v, used_p = {}, {}, {}
   for i, p in ipairs(P.PALETTES) do
     assert(not names[p.name], "duplicate palette " .. p.name)
@@ -244,4 +244,87 @@ test("palettes: react params map to the engine (depth clamped, source 1-4)", fun
   assert(es:find('params:add_control%("react", "react", controlspec.new%(0, 1, "lin", 0.01, 0.5%)%)'), "react param")
   assert(es:find('params:add_option%("react_src", "react source", PAL.REACT_SOURCES, #PAL.REACT_SOURCES%)'), "react source param")
   assert(es:find('tweak%("react", PAL.react%(v%)%)') and es:find('tweak%("react_src", PAL.react_src%(v%)%)'), "react tweaks")
+end)
+
+test("palettes: v4 adds ocarina, bowl, musicbox, chime, hum, bowed and six palettes after v3's", function()
+  -- v3 psets: every voice, pad and palette option keeps its index
+  local v3_voices = {"rhodes", "bell", "sine", "marimba", "vibes", "celesta", "kalimba", "flute", "glass",
+                     "harp", "koto", "choir", "glock", "piano", "dulcimer", "steelpan", "guitar", "horn"}
+  local v3_pads = {"warm", "strings", "glass", "air", "organ", "shimmer", "tape", "reed"}
+  local v3_pals = {"harbor", "shallows", "glasshouse", "morning", "riverbank", "tidepool", "veranda", "mist", "atrium",
+                   "lantern", "teahouse", "chapel", "orchard", "parlour", "lagoon", "boathouse", "sandbar", "promenade",
+                   "cloister", "courtyard"}
+  for i, n in ipairs(v3_voices) do eq(P.VOICES[i], n, "voice " .. i) end
+  for i, n in ipairs(v3_pads) do eq(P.PADS[i], n, "pad " .. i) end
+  for i, n in ipairs(v3_pals) do eq(P.NAMES[i], n, "palette " .. i) end
+  local new_v = {"ocarina", "bowl", "musicbox", "chime"}
+  for k, n in ipairs(new_v) do eq(P.VOICES[18 + k], n, "new voice " .. k) end
+  eq(P.PADS[9], "hum", "pad 9"); eq(P.PADS[10], "bowed", "pad 10")
+  eq(#P.VOICES, 22, "22 voices"); eq(#P.PADS, 10, "10 pads"); eq(#P.PALETTES, 26, "26 palettes")
+  local new_p = {"pavilion", "conservatory", "observatory", "arboretum", "aquarium", "gallery"}
+  for k, n in ipairs(new_p) do eq(P.NAMES[20 + k], n, "new palette " .. k) end
+  -- no palette added since v3 is named like a place (all twenty-eight)
+  local places = {"ripples", "horizon", "postcards", "rain", "tide", "drift", "reeds", "koi", "kelp", "fireflies",
+                  "mist", "flock", "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies",
+                  "echo bridge", "echo_bridge", "confluence", "delta", "onsen", "lotus", "glacier", "pod", "wellspring"}
+  for _, t in ipairs(places) do
+    for i = 10, #P.PALETTES do assert(P.NAMES[i] ~= t, "palette " .. t .. " is a place's name") end
+  end
+  -- each new voice in at least four palettes, each new pad in at least one
+  local vc, pc = {}, {}
+  for _, p in ipairs(P.PALETTES) do
+    for _, v in ipairs(p.voices) do vc[v] = (vc[v] or 0) + 1 end
+    pc[p.pad] = (pc[p.pad] or 0) + 1
+  end
+  for _, v in ipairs(new_v) do assert((vc[v] or 0) >= 4, v .. " in fewer than 4 palettes") end
+  assert(pc.hum and pc.bowed, "a new pad in no palette")
+  -- the param -> engine maps reach the new sounds, and pinning works
+  local defs, pdefs = engine_list("voiceDefs"), engine_list("padDefs")
+  for k, n in ipairs(new_v) do eq(defs[P.motif_voice(1 + 18 + k, 1, 1)], "est_" .. n, "voice option " .. n) end
+  eq(pdefs[P.pad_sound(1 + 9, 1)], "est_pad_hum", "pad option hum")
+  eq(pdefs[P.pad_sound(1 + 10, 1)], "est_pad_bowed", "pad option bowed")
+  for k = 21, 26 do
+    local S = {}
+    P.pin(S, 1 + k)
+    eq(S.palette, k, "pin " .. k .. " immediate")
+    for seed = 1, 20 do eq(P.for_track(S, seed), k, "pinned " .. P.NAMES[k]) end
+    for slot = 1, 4 do eq(defs[P.motif_voice(1, k, slot)], "est_" .. P.PALETTES[k].voices[slot], "slot " .. slot) end
+    eq(pdefs[P.pad_sound(1, k)], "est_pad_" .. P.PALETTES[k].pad, P.NAMES[k] .. " pad")
+  end
+end)
+
+test("palettes: adding a release keeps the earlier palettes' run (an old seed's first tracks sound the same)", function()
+  -- the draw with only the v3 palettes, against the draw with all of them:
+  -- the same palettes, track for track, until the v3 palettes have brought
+  -- every v3 voice round (where the old draw began its next sweep)
+  local all = P.PALETTES
+  local old = {}
+  for i = 1, 20 do old[i] = all[i] end
+  local v3n = 18
+  local checked = 0
+  for start = 1, 200 do
+    local seeds = {}
+    for k = 1, 30 do seeds[k] = start * 7919 + k * 104729 end
+    P.PALETTES = old
+    local So, oldrun, cover = {}, {}, nil
+    local heard = {}
+    for k = 1, 30 do
+      oldrun[k] = P.for_track(So, seeds[k])
+      for _, v in ipairs(old[oldrun[k]].voices) do heard[v] = true end
+      local n = 0
+      for _ in pairs(heard) do n = n + 1 end
+      if not cover and n == v3n then cover = k end
+    end
+    P.PALETTES = all
+    local Sn = {}
+    for k = 1, cover do
+      eq(P.for_track(Sn, seeds[k]), oldrun[k], "start " .. start .. " track " .. k)
+      checked = checked + 1
+    end
+    -- and the new release follows at once: the next track is one of its palettes
+    local nxt = P.for_track(Sn, seeds[cover + 1])
+    assert(nxt > 20, "start " .. start .. ": no v4 palette straight after the v3 sweep (got " .. nxt .. ")")
+  end
+  P.PALETTES = all
+  assert(checked > 200 * 4, "too few tracks compared")
 end)
