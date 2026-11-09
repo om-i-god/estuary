@@ -87,7 +87,7 @@ local theme = 1
 local vis_chord, vis_state, vis_moment   -- what the visuals were last told
 local page  = 1
 local msg, msg_t = nil, 0
-local pedal_pc_last, pedal_bar = nil, -99   -- the sounding pedal (midi, nil = none), when struck
+local pedal_pc_last, pedal_beat = nil, -99 * 4   -- the sounding pedal (midi, nil = none), when struck (track beats)
 local PEDAL_FLOOR = 28                       -- E1: nothing lower
 
 local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
@@ -191,17 +191,18 @@ local function pedal_off()
 end
 
 -- pedal: a soft low note under the chord at its gain; again when the pitch
--- moves, else every four bars so it never lapses. thinned, muted or with no
+-- moves, else again on the last barline before 16 beats have passed (four
+-- bars of 4/4; counted in beats, so a meter change can't stretch the gap
+-- past the 18-beat note). thinned, muted or with no
 -- clean place under this chord, it lets go
 local function pedal_follow()
   local g = S.muted.pedal and 0 or (S.gain.pedal or 0)
   local midi = S.playing and g > 0.02 and S.pedal_pc
     and place_pedal((S.root_pc + S.pedal_pc) % 12, S.chord, pedal_pc_last)
   if midi then
-    -- (every 16 beats' worth of whole bars: 4 bars at 4/4, so the 18-beat
-    -- note never lapses in any meter)
-    if midi ~= pedal_pc_last or S.track_bar - pedal_bar >= math.floor(16 / MT.beats(S.meter)) then
-      pedal_pc_last, pedal_bar = midi, S.track_bar
+    local now = S.track_beats or 0
+    if midi ~= pedal_pc_last or now - pedal_beat + S.bar8 / 2 > 16 then
+      pedal_pc_last, pedal_beat = midi, now
       emit("pedal", midi, 0.7 * g, 4.5 * 4)
       if S.pedal_probe then S.pedal_probe(midi, 4.5 * 4) end
     end
@@ -295,7 +296,7 @@ local function step_motif(i)
   local lean = MT.lean(S.meter, S.bar_pos)
   if lean then vel = math.min(0.8 * g, vel * lean) end
   emit(k, midi, vel, dur_beats, m)
-  if S.probe then S.probe(i, midi, ev, dur_beats) end
+  if S.probe then S.probe(i, midi, ev, dur_beats, vel) end
   VIS.event("note", i, midi, dur_beats * clock.get_beat_sec())
 end
 
@@ -372,7 +373,7 @@ start = function()
   if S.playing then return end
   -- a track that ended on "stop": play starts the next one (new seed, a
   -- neighbouring key), as "next track" would have
-  if S.mode_play == 2 and S.total_bars and S.track_bar >= S.total_bars then
+  if S.mode_play == 2 and S.total_bars and C.track_pos(S) >= S.total_bars then
     new_track(math.random(1, 9999), true)
     flash("new track " .. S.seed)
   end

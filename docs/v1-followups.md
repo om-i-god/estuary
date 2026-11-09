@@ -119,4 +119,4 @@ No engine change. PARAMS > ESTUARY > meter; the sim checks every meter against t
 - Changing meter during play (from PARAMS, or the param mapped to a MIDI controller): the play page shows `4/4>5/4` until the next barline, then the new bar starts. No note should cut or double; the pad and pedal carry on; the grid's phrase row keeps counting bars.
 - Visuals: the bar breath should follow the new bar length within one bar of a change (longest in 5/4, shortest in 7/8).
 - MIDI / crow: with an external sequencer following norns' clock, check that the bar-rate outputs (bloom CV, CCs, the phrase pulse) land on the new barline, and that the clock pulses are unchanged (they are beats).
-- Track mode: a 12-minute track should still last about 12 minutes in every meter (216 bars of 4/4, 345 of 5/4, 288 of 3/4, 246 of 7/8 at 72 bpm).
+- Track mode: a 12-minute track should still last about 12 minutes in every meter (216 bars of 4/4, 172 of 5/4, 288 of 3/4, 246 of 7/8 at 72 bpm), and changing meter mid-track should not move the section or the % on the screen.

@@ -38,13 +38,15 @@ chord voicing is set by the bloom when on **auto**: open (5th + 9th), quartal (s
 - **set (endless):** the bloom swells and falls over a cycle of 20 to 40 minutes, with a slow random walk on top. the screen shows `trough` or `swell`. at the bottom of the cycle the music is nearly bare.
 - **track:** a fixed arc over the track length (default 12 min): **arrival** → **bloom** → **tide** (with a water swell) → **return** → **settling**. the screen shows the section and how far through the track it is (`bloom 40%`). at the end it either stops or rolls into a new track with a new seed and sometimes a new key; after a stop, K2 + K3 starts that next track.
 
-**meter.** 4/4 by default; **meter** (PARAMS > ESTUARY) also offers 3/4, 5/4 (grouped 3 + 2 beats), 6/8 (3 + 3 eighths) and 7/8 (2 + 2 + 3 eighths). the bar sets the music's breathing: the chords, phrases, pad crossfades, swells, the grid's phrase row, the visuals' bar breath and the midi / crow bar outputs all move on its barlines, and everything counted in bars (phrase length, chord holds, the theme cycle) stays counted in bars, so a 16-bar phrase in 5/4 is 40 beats long. track length stays in minutes: a 12-minute track at 72 bpm is 216 bars of 4/4 or 345 of 5/4. what you hear:
+**meter.** 4/4 by default; **meter** (PARAMS > ESTUARY) also offers 3/4, 5/4 (grouped 3 + 2 beats), 6/8 (3 + 3 eighths) and 7/8 (2 + 2 + 3 eighths). the bar sets the music's breathing: the chords, phrases, pad crossfades, swells, the grid's phrase row, the visuals' bar breath and the midi / crow bar outputs all move on its barlines, and everything counted in bars (phrase length, chord holds, the theme cycle) stays counted in bars, so a 16-bar phrase in 5/4 is 80 beats long. track length stays in minutes: a 12-minute track at 72 bpm is 216 bars of 4/4 or 172 of 5/4, and a meter change mid-track keeps the arc where it is in time. what you hear:
 
 - **a gentle lilt.** a note that lands on the downbeat is a touch fuller (about 8%), and one on the bar's second group a little less so (about 4%): beat 4 in 5/4, the fourth eighth in 6/8, the third and fifth eighths in 7/8. 3/4 leans on the downbeat only; 4/4 has no lean at all.
 - **motifs that fit the bar.** off 4/4, about half the new motifs take a cycle of whole bars (5/4: 10 or 15 beats; 3/4 and 6/8: 9, 12 or 15; 7/8: 7 or 14), so they come round with the barline and the meter sits in the melody; the rest keep their odd phasing cycles and drift against the bar as before. mutations keep each motif in its kind. motifs already playing when you change the meter carry on and are replaced in their turn.
 - **changes on the barline.** a new meter takes over at the next barline. no note is cut: whatever is sounding rings on into the new bar. while stopped it applies at once, and play starts on a bar of the new meter. the play page shows the meter beside the chord (`I  5/4`, with `4/4>5/4` while a change waits for its barline).
 
 4/4 plays exactly as estuary always has.
+
+the meter lives in estuary only: following an external MIDI clock or Link, estuary's beats line up with it, but in 3/4, 5/4, 6/8 or 7/8 its barlines won't line up with an external 4-beat bar.
 
 the first time estuary loads it sets the norns clock to 72 bpm; after that the tempo is yours.
 

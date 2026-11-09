@@ -12,8 +12,10 @@
 --      GRID=1       random grid presses every bar
 --      RESTART=1    track end = stop; K2+K3 after each stop must play a whole new track
 --      METER=5/4    play in that meter (3/4 4/4 5/4 6/8 7/8; default 4/4). METER=walk
---                   moves to another meter every 37 bars, mid-bar: each change must
---                   land on the next barline, and every bar lasts its meter's beats
+--                   moves to another meter every 37 bars (a few 8ths in, on the
+--                   last 8th, or just after it): each change must land on the
+--                   next barline, and every bar lasts its meter's beats.
+--                   every note's velocity is checked against the meter's lean
 --      SNAP=dir     after the run, draw each theme into a real raster and write dir/<name>.pgm;
 --                   asserts each frame has >= 40 lit pixels and none repeats another. also
 --                   <name>_still.pgm (the engine's ears silent: never blank) and
@@ -344,7 +346,22 @@ if METER and not WALK then
 end
 R.attach(S)
 local notes_by = {0, 0, 0, 0}
-S.probe = function(slot, midi, ev, dur_beats)
+-- the lean: a note's velocity is (0.5 + 0.3 x bright) x gain, times the
+-- meter's lean on its 8th of the bar, never past 0.8 x gain
+LEAN = {}           -- "meter pos factor" -> notes; LEAN_BAD = mismatches
+S.probe = function(slot, midi, ev, dur_beats, vel)
+  local m, g = S.motifs[slot], S.gain["motif" .. slot] or 0
+  local base = (0.5 + 0.3 * m.bright) * g
+  local f = vel / base
+  local want = MT and MT.lean(S.meter, S.bar_pos) or nil
+  local ok
+  if want then ok = math.abs(vel - math.min(0.8 * g, base * want)) < 1e-9
+  else ok = vel == base end
+  if not ok then LEAN_BAD = (LEAN_BAD or 0) + 1 end
+  if want or math.abs(f - 1) > 1e-9 then
+    local k = string.format("%s %d %.3f", MT.name(S.meter), S.bar_pos, f)
+    LEAN[k] = (LEAN[k] or 0) + 1
+  end
   notes_by[slot] = notes_by[slot] + 1
   R.on_note(STEP_BEATS, slot, midi, dur_beats, ev)
 end
@@ -500,10 +517,14 @@ while bars_seen < BARS do
   steps = steps + 1
   assert(steps < BARS * 10 + 64 * (#STOPS + 1), "clock stalled")
   if not S.playing then
+    last_bar_t = nil              -- the next bar after a restart is timed afresh
     print("stopped at bar", S.track_bar)
     if MOMENT_ON then NATURE_FAILS[#NATURE_FAILS + 1] = "moment still playing after stop" end
     if not RESTART or #STOPS >= 4 then break end
     STOPS[#STOPS + 1] = S.track_bar
+    -- (in bars of the meter at the stop, so a walk's mixed bars count by time)
+    STOP_SHORT = STOP_SHORT or {}
+    STOP_SHORT[#STOPS] = S.track_beats / (S.bar8 / 2) < (S.total_bars or 0) - 1e-9 and S.total_bars or nil
     key(2, 1); key(3, 1); key(3, 0); key(2, 0)
     assert(S.playing and S.track_bar == 0, "K2+K3 after a track-end stop didn't start a new track")
   end
@@ -512,7 +533,7 @@ while bars_seen < BARS do
     bars_seen = bars_seen + 1
     -- each bar lasts its own meter's beats (the barline was a tick ago)
     local t = STEP_BEATS
-    if last_bar_t and #STOPS == 0 and math.abs(t - last_bar_t - last_bar8 / 2) > 1e-6
+    if last_bar_t and math.abs(t - last_bar_t - last_bar8 / 2) > 1e-6
        and #BAR_FAILS < 3 then
       BAR_FAILS[#BAR_FAILS + 1] = string.format("bar %d lasted %.1f beats, its meter %d 8ths", bars_seen - 1, t - last_bar_t, last_bar8)
     end
@@ -520,8 +541,16 @@ while bars_seen < BARS do
     -- a waiting meter never outlives the barline it waited for
     if S.meter_next then BAR_FAILS[#BAR_FAILS + 1] = "meter change still waiting after a barline" end
     -- walk: a new meter, asked for mid-bar (the next barline takes it)
+    -- (three ways in turn: a few 8ths into the bar, with only the last 8th
+    -- to go, and with every 8th played, so the very next step is the barline)
     if WALK and bars_seen % 37 == 0 then
-      for _ = 1, 3 do tick_all(); steps = steps + 1 end
+      local how = (bars_seen // 37) % 3
+      if how == 0 then
+        for _ = 1, 3 do tick_all(); steps = steps + 1 end
+      else
+        local stop_at = how == 1 and S.bar8 - 1 or 0
+        repeat tick_all(); steps = steps + 1 until S.bar_pos == stop_at or not S.playing
+      end
       local v = S.meter
       while v == S.meter do v = math.random(#MT.NAMES) end
       local was = S.bar8
@@ -732,8 +761,8 @@ end
 if RESTART then
   if #STOPS < 2 then extra[#extra + 1] = "restart: only " .. #STOPS .. " track-end stops" end
   for i = 1, #STOPS do
-    if STOPS[i] < (S.total_bars or 0) then
-      extra[#extra + 1] = string.format("restart: stop %d came after %d bars, track is %d", i, STOPS[i], S.total_bars)
+    if STOP_SHORT[i] then
+      extra[#extra + 1] = string.format("restart: stop %d came after %d bars, track is %d", i, STOPS[i], STOP_SHORT[i])
     end
   end
   print("restart: track bars before each stop " .. table.concat(STOPS, " "))
@@ -754,6 +783,13 @@ end
 if MOMENT_ON and STEP_BEATS - MOMENT_ON > 4 * S.bar8 / 2 + 1e-6 then NATURE_FAILS[#NATURE_FAILS + 1] = "moment never faded" end
 for _, f in ipairs(NATURE_FAILS) do extra[#extra + 1] = f end
 for _, f in ipairs(BAR_FAILS) do extra[#extra + 1] = f end
+if LEAN_BAD then extra[#extra + 1] = LEAN_BAD .. " notes off their meter's lean" end
+do
+  local ks = {}
+  for k, n in pairs(LEAN) do ks[#ks + 1] = k .. " x" .. n end
+  table.sort(ks)
+  print("lean (meter 8th factor): " .. (#ks > 0 and table.concat(ks, ", ") or "none"))
+end
 if WALK and BARS >= 100 and (WALKED or 0) == 0 then extra[#extra + 1] = "meter walk never changed the meter" end
 print(string.format("meter %s (%d 8ths a bar)%s", MT.name(S.meter), S.bar8, WALK and (", walked " .. (WALKED or 0) .. " times") or ""))
 local ok, fails = R.report()

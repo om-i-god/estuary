@@ -434,7 +434,17 @@ function M.realize(m, ev, chord, mode, root_pc, others)
           local c = j >= 1 and rung(pcs, anchor, j)
           if c and not rubs(c) and (not best or reach(c) < reach(best)) then best = c end
         end
-        midi = best or midi
+        -- every neighbour rubs too (the chord and another motif's held note
+        -- can close off two rungs each side): reach a little further, else
+        -- the note rests this time round
+        if not best then
+          for _, j in ipairs({i + 3, i - 3, i + 4, i - 4}) do
+            local c = j >= 1 and rung(pcs, anchor, j)
+            if c and not rubs(fold(c)) and (not best or reach(c) < reach(best)) then best = c end
+          end
+          if not best then return nil end
+        end
+        midi = best
       end
     end
   else

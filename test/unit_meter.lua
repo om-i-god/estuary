@@ -206,7 +206,70 @@ test("meter: a change lands on the next barline; every bar lasts its meter", fun
   end
 end)
 
-test("meter: off 4/4 the stream leans, and stays inside the velocity ceiling", function()
+test("meter: the lean is exact: downbeat x1.08, group starts x1.04, nothing else", function()
+  -- the sim checks every note's velocity against (0.5 + 0.3 x bright) x gain
+  -- times the lean on its 8th (capped at 0.8 x gain), and lists the factors
+  local want = {
+    ["5/4"] = {[0] = "1.080", [6] = "1.040"}, ["7/8"] = {[0] = "1.080", [2] = "1.040", [4] = "1.040"},
+    ["6/8"] = {[0] = "1.080", [3] = "1.040"}, ["3/4"] = {[0] = "1.080"}, ["4/4"] = {},
+  }
+  for n, w in pairs(want) do
+    local p = assert(io.popen("METER=" .. n .. " SEED=5 lua test/sim.lua 200 2>&1"))
+    local out = p:read("a"); p:close()
+    assert(out:find("RULES ok"), n .. " sim failed: " .. out:sub(-300))
+    local line = assert(out:match("lean %(meter 8th factor%): ([^\n]*)"), n .. ": no lean line")
+    local seen = {}
+    for name, pos, f, cnt in line:gmatch("(%d/%d) (%d+) ([%d.]+) x(%d+)") do
+      pos = tonumber(pos)
+      eq(name, n, "meter")
+      assert(w[pos], n .. ": a lean on 8th " .. pos .. " (" .. f .. ")")
+      -- below the full factor only where the 0.8 x gain ceiling caps it
+      assert(tonumber(f) <= tonumber(w[pos]) + 1e-9 and tonumber(f) > 1, n .. " pos " .. pos .. " factor " .. f)
+      if f == w[pos] then seen[pos] = (seen[pos] or 0) + tonumber(cnt) end
+    end
+    for pos in pairs(w) do assert((seen[pos] or 0) > 10, n .. ": too few notes at the full lean on 8th " .. pos) end
+    if n == "4/4" then eq(line, "none", "4/4 leans") end
+  end
+end)
+
+test("meter: a change mid-track keeps the arc where it is in time", function()
+  _path = {audio = "/audio/"}
+  util = {scandir = function() return {} end}
+  engine = setmetatable({}, {__index = function() return function() end end})
+  local C = include("lib/conductor")
+  for _, sw in ipairs({{8, 10}, {10, 7}, {6, 8}, {7, 6}}) do
+    local S = {root_pc = 0, mode = 1, harmony = 3, voicing = 7, bloom = 0, mode_play = 2,
+               phrase_len = 16, tempo = 72, track_minutes = 12, moment_freq = 0, end_action = 1,
+               gain = {}, muted = {}, soloed = {}, bar8 = sw[1]}
+    C.new_track(S, 7, false)
+    local beats, last, bars = 0, 0, 0
+    local r
+    repeat
+      if bars == 60 then S.bar8 = sw[2] end
+      r = C.bar(S)
+      beats = beats + S.bar8 / 2
+      bars = bars + 1
+      -- progress never jumps more than a bar's worth
+      assert(S.progress - last < 1.5 / S.total_bars and S.progress >= last - 1e-9,
+        ("%d->%d bar %d progress %.4f after %.4f"):format(sw[1], sw[2], bars, S.progress, last))
+      last = S.progress
+    until r == "stop" or bars > 2000
+    eq(r, "stop", "track ended")
+    -- it lasted the minutes asked, within a bar
+    local sec = beats * 60 / 72
+    assert(math.abs(sec - 12 * 60) <= 5 * 60 / 72 + 1e-6, ("%d->%d: track lasted %.1f s"):format(sw[1], sw[2], sec))
+  end
+end)
+
+test("meter: regression seeds (busy fade tails in short bars, a held rub in 7/8)", function()
+  for _, c in ipairs({{107, "3/4", "900 2 4"}, {107, "6/8", "900 2 4"}, {6, "7/8", "900 2 4"}, {6, "7/8", "900"}}) do
+    local p = assert(io.popen(("SEED=%d METER=%s lua test/sim.lua %s 2>&1"):format(c[1], c[2], c[3])))
+    local out = p:read("a"); p:close()
+    assert(out:find("RULES ok"), ("seed %d %s %s: %s"):format(c[1], c[2], c[3], out:sub(-300)))
+  end
+end)
+
+test("meter: off 4/4 the stream differs from 4/4 and stays inside the velocity ceiling", function()
   local s = sim_stream(5, "200", "5/4")
   local n, top = 0, 0
   for vel in s:gmatch("\nnote [%d.]+ %d+ [%d.]+ ([%d.e-]+)") do
@@ -215,7 +278,6 @@ test("meter: off 4/4 the stream leans, and stays inside the velocity ceiling", f
   end
   assert(n > 50, "5/4 played " .. n .. " notes")
   assert(top <= 0.8 + 1e-9, "a leaned note at velocity " .. top)
-  -- and 5/4 is a different piece from 4/4 (same seed)
   local s44 = sim_stream(5, "200", "4/4")
   assert(s ~= s44, "5/4 and 4/4 streams identical")
 end)
