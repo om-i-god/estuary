@@ -106,7 +106,7 @@ motifs 2 and 4 play an octave above 1 and 3, so the small high voices sit there.
 **react: everything listening.** the notes never change, but the sound listens and leans with what it hears. **react** (PARAMS > SOUND, 0-1, default 0.5) sets how far; **react source** picks what it listens to: **water**, **room**, **self** or **all** (the default).
 - **water:** as the field recordings swell, the music brightens with them: new notes come in a little brighter, the pad's filter opens, and the reverb send widens, so the set breathes with the tide. as the water falls back, so does the shine.
 - **room:** while **LISTEN > follow input key** is on, the level coming into the norns inputs tilts the notes a little brighter and lengthens the echo slightly, so the set leans into a lively room. when listening stops it lets go.
-- **self:** under busy motif passages the pad dips gently (under 3 dB at the full depth), and in sparse passages the reverb opens out a little.
+- **self:** under busy motif passages the pad dips gently (under 3 dB at the full depth), and in sparse passages the reverb opens out a little. it listens to the motif voices' dry sound (before echo and reverb), not the whole output, so neither the pad's dip nor the wider reverb can feed back into what it hears.
 
 every change moves slowly (it rises over a second or so and settles back over several), so nothing pumps. each one has a ceiling, and the engine measures each source upstream of anything react changes, so nothing can run away, even with a microphone hearing the speakers. at 0 the sound is exactly as it was before react existed. after updating, run **SYSTEM > RESTART** once: react lives in the engine.
 

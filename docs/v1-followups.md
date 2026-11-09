@@ -73,7 +73,7 @@ Engine change: run SYSTEM > RESTART once before loading. The Mac checks (`test/s
 - Old psets: load a pset saved with v1 and confirm the motif voices it chose (rhodes / bell / sine / marimba) still play.
 
 ## Sounds v3: on-device listening checks
-Engine change: run SYSTEM > RESTART once before loading. On the Mac, `test/sc/run.sh` measures every voice and pad alone (the 18 voices sit within about 0.5 dB RMS, the 8 pads within about 2 dB), checks react (neutral at 0, an exact null against the v2 engine in NRT, water/room/self each measurable at 0.8, 60 s at max with the output fed back into the input staying bounded), and renders a demo per palette plus `react_0_*.wav` / `react_08_*.wav` (one palette under a water swell). These are the checks that need the device and your ears:
+Engine change: run SYSTEM > RESTART once before loading. On the Mac, `test/sc/run.sh` measures every voice and pad alone (the 18 voices sit within about 1 dB RMS, the 8 pads within about 2 dB), checks react (neutral at 0, an exact null against the v2 engine in NRT, water/room/self each measurable at 0.8, 60 s at max with the output fed back into the input staying bounded), and renders a demo per palette plus `react_0_*.wav` / `react_08_*.wav` (one palette under a water swell). These are the checks that need the device and your ears:
 - New voices by ear:
   - harp: does the long ring muddy busy passages?
   - koto: is the pitch settle (about 20 cents over 120 ms) heard as a gentle bend, never as out of tune?

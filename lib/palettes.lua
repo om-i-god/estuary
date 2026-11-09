@@ -1,7 +1,8 @@
 -- estuary / palettes
 -- a palette is one record's worth of sound: a voice for each of the four
 -- motif slots, a pad character, and small tilts to brightness and sends.
--- each new track picks one (seeded, never the last one again) unless the
+-- each new track picks one (seeded, every palette once a round, never the
+-- last one again) unless the
 -- palette param pins it.
 --
 -- engine indices: the `note` command's voice arg is the position in VOICES,
@@ -56,42 +57,36 @@ end
 function P.voice_index(name) return index_of(P.VOICES, name) end
 function P.pad_index(name) return index_of(P.PADS, name) end
 
--- a seeded pick that leaves math.random alone (the seed's music must not
--- change because a palette was chosen). never `last` again.
+-- a seeded hash that leaves math.random alone (the seed's music must not
+-- change because a palette was chosen)
 local function hash(seed)
   local h = (math.floor(seed or 1) * 2654435761) % 4294967296
   return (h ~ (h >> 13)) % 4294967296
 end
 
-function P.choose(seed, last)
-  local n = #P.PALETTES
-  local h = hash(seed)
-  local i = (h % n) + 1
-  if last and i == last and n > 1 then
-    i = ((i - 1 + 1 + (h >> 8) % (n - 1)) % n) + 1
-  end
-  return i
-end
-
--- a seeded draw from the bag of palettes not yet heard: every palette
--- comes round once before any comes again, and the bag is refilled without
--- the one playing, so none ever comes twice in a row. leaves math.random alone
+-- a seeded draw from the bag of palettes not yet played this round: every
+-- palette comes round once before any comes again. a new round's bag holds
+-- all of them; only its first draw skips the one playing, so none ever
+-- comes twice in a row
 local function draw(S, seed)
   local n = #P.PALETTES
   if n < 2 then return 1 end
   local bag = S.palette_bag or {}
-  -- never the one playing (a pin may have set it while it was still in the bag)
-  for j = #bag, 1, -1 do if bag[j] == S.palette then table.remove(bag, j) end end
-  if #bag == 0 then
-    for i = 1, n do if i ~= S.palette then bag[#bag + 1] = i end end
+  local cand = {}
+  -- never the one playing (a pin may have set it while it was in the bag)
+  for j, pi in ipairs(bag) do if pi ~= S.palette then cand[#cand + 1] = j end end
+  if #cand == 0 then
+    bag = {}
+    for i = 1, n do bag[i] = i end
+    for j = 1, n do if j ~= S.palette then cand[#cand + 1] = j end end
   end
-  -- of those, the ones bringing the most voices not yet heard this round
-  -- (so every voice comes round soon), then a seeded pick among them
+  -- of those, the ones bringing the most voices not yet heard (so every
+  -- voice comes round soon), then a seeded pick among them
   local heard = S.voices_heard or {}
   local best, top = {}, -1
-  for j, pi in ipairs(bag) do
+  for _, j in ipairs(cand) do
     local new = 0
-    for _, v in ipairs(P.PALETTES[pi].voices) do if not heard[v] then new = new + 1 end end
+    for _, v in ipairs(P.PALETTES[bag[j]].voices) do if not heard[v] then new = new + 1 end end
     if new > top then best, top = {j}, new elseif new == top then best[#best + 1] = j end
   end
   local i = table.remove(bag, best[(hash(seed) % #best) + 1])

@@ -53,8 +53,10 @@ SynthDef(\react_tap, { arg in, buf;
   var m = Mix(In.ar(in, 2)) * 0.5;
   RecordBuf.ar([m, HPF.ar(HPF.ar(m, 2500), 2500)], buf, loop: 0, doneAction: 2);
 }).add;
+// the room mic: last block's output (InFeedback) into the inputs, written
+// at the head of the engine's group so est_listen hears it this block
 SynthDef(\react_loop, { arg from, to, gain = 2;
-  var sig = In.ar(from, 2) * gain;
+  var sig = InFeedback.ar(from, 2) * gain;
   Out.ar(to, sig[0]); Out.ar(to + 1, sig[1]);
 }).add;
 s.sync;
@@ -242,7 +244,7 @@ if(\Engine_EstuaryV2.asClass.isNil, { fail.("no Engine_EstuaryV2 (run via test/s
   var rec = Recorder(s), lp, worst = [0, 0, 0, 1, 0.45], bad = false, playing = true;
   rec.recHeaderFormat = "wav"; rec.recSampleFormat = "float";
   // the room mic hears the speakers, louder than life
-  lp = Synth(\react_loop, [\from, e.context.out_b.index, \to, e.context.in_b[0].index, \gain, 2], e.context.xg, \addToTail);
+  lp = Synth(\react_loop, [\from, e.context.out_b.index, \to, e.context.in_b[0].index, \gain, 2], e.context.xg, \addToHead);
   [\react, 1, \react_src, 4, \echo_fb, 0.85, \verb_size, 1, \verb_send, 1, \level, 1, \tone, 1,
    \motif_level, 1, \pad_level, 1, \pedal_level, 1, \bed_level, 1, \swell_level, 1, \moment_level, 1,
    \nature_tone, 1, \echo_time, 0.42].clump(2).do { |kv| e.cmd(\tweak, kv[0].asString, kv[1]) };
@@ -292,6 +294,8 @@ if(\Engine_EstuaryV2.asClass.isNil, { fail.("no Engine_EstuaryV2 (run via test/s
     if(nan or: { bad }, { fail.("runaway: NaN") });
     if(pk >= 1.0, { fail.("runaway: clipping " ++ pk) });
     if((win.(45, secs) - win.(15, 30)) > 3, { fail.("runaway: the level climbs") });
+    // the loop has teeth: the room really leans the echo, within its clamp
+    if(worst[2] < 0.03, { fail.("runaway: the room loop never reached the echo feedback " ++ worst[2]) });
     if((worst[0] > 0.3001) or: { worst[1] > 0.5001 } or: { worst[2] > 0.1001 } or: { worst[3] < 0.6999 } or: { worst[4] > 0.8001 }, {
       fail.("runaway: a nudge left its clamp " ++ worst) });
   });

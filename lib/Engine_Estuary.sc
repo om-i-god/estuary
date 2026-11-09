@@ -50,7 +50,7 @@ Engine_Estuary : CroneEngine {
   var keyBus, <inAmpBus, natAmpBus, outBus, <natSumBus, <motifAmpBus, <reactBus;
   var pedalSynth, padMixSynth, natFxSynth, echoSynth, verbSynth, masterSynth, listenSynth;
   var motifMixSynth, <reactSynth;
-  var natBufs, natSynths, natLevels, natLoading, natPending, natGen, natOnceUse;
+  var natBufs, natSynths, natLevels, natLoading, natPending, natGen, natOnceUse, natOnceEnd;
   var st, fx, fxMap, fxVals;
   // engine voice / pad_sound indices (1-based) -> SynthDefs. these lists
   // only grow at the end; lib/palettes.lua mirrors them (VOICES, PADS)
@@ -118,6 +118,7 @@ Engine_Estuary : CroneEngine {
     natPending = Array.fill(3, nil);     // [level, fade] asked for while loading
     natGen     = Array.fill(3, 0);       // load count: a stale load is dropped
     natOnceUse = IdentityDictionary.new; // buffer -> one-shots playing it
+    natOnceEnd = IdentityDictionary.new; // one-shot -> when it runs out (SystemClock s)
 
     // values read at spawn time (set via `tweak`)
     st = IdentityDictionary.new;
@@ -318,7 +319,9 @@ Engine_Estuary : CroneEngine {
     // loud; a slow onset, late vibrato, a hair of pitch life and a slow
     // shimmer opposite left and right
     SynthDef(\est_choir, {
-      arg out, echoOut, verbOut, freq=261, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      arg out, echoOut, verbOut, amp=0.2, vel=0.7, dur=1, pan=0, bright=0.5, echo=0.3, verb=0.3;
+      // init rate: the vowel's weights are worked out once per note
+      var freq = \freq.ir(261);
       var atk  = (0.34 - (bright * 0.1)) * Rand(0.9, 1.1);
       var env  = EnvGen.kr(Env([0, 1, 0.9, 0], [atk, dur.max(0.2), 1.1], [\sin, -1, -4]), doneAction: 2);
       var vd   = EnvGen.kr(Env([0, 0, 1], [0.5, 1.2], [0, 2])) * 0.004;
@@ -542,15 +545,18 @@ Engine_Estuary : CroneEngine {
       arg out, f1=130, f2=196, f3=293, f4=392, amp=0.08, bright=0.5, atk=4, rel=4, gate=1;
       var env  = EnvGen.kr(Env.asr(atk, 1, rel, [2, -2]), gate, doneAction: 2);
       var halo = EnvGen.kr(Env([0, 0, 1], [(atk * 0.5), ((atk * 1.5) + 2)], [0, 2]));
-      var sig = [f1, f2, f3, f4].collect { |f, i|
-        var p    = [-0.5, -0.17, 0.17, 0.5][i];
-        var core = (SinOsc.ar(f) * 0.55) + (LFTri.ar(f) * 0.2);
-        var oct  = SinOsc.ar((f * 2).min(15000), Rand(0, 2pi)) * (0.3 + (0.15 * bright)) * (0.65 + (0.35 * SinOsc.kr(Rand(0.05, 0.11), Rand(0, 2pi))));
-        var top  = SinOsc.ar((f * 4).min(15000)) * (0.03 + (0.05 * bright)) * (0.5 + (0.5 * LFNoise2.kr(0.13)));
-        Pan2.ar(core, p) + Pan2.ar(((oct + top) * halo), p.neg)
-      };
-      sig = LPF.ar(Mix(sig), 9000);
-      Out.ar(out, sig * env * amp * 1.23);
+      var core = Mix([f1, f2, f3, f4].collect { |f, i|
+        Pan2.ar((SinOsc.ar(f, 0, 0.55) + LFTri.ar(f, 0, 0.2)), [-0.5, -0.17, 0.17, 0.5][i])
+      });
+      // the halos are mixed first and the slow halo envelope applied once
+      // per channel; every gain is folded at control rate into a mul
+      var hal = Mix([f1, f2, f3, f4].collect { |f, i|
+        var oct = SinOsc.ar((f * 2).min(15000), Rand(0, 2pi), ((0.3 + (0.15 * bright)) * (0.65 + (0.35 * SinOsc.kr(Rand(0.05, 0.11), Rand(0, 2pi))))));
+        var top = SinOsc.ar((f * 4).min(15000), 0, ((0.03 + (0.05 * bright)) * (0.5 + (0.5 * LFNoise2.kr(0.13)))));
+        Pan2.ar((oct + top), [0.5, 0.17, -0.17, -0.5][i])
+      });
+      var sig = LPF.ar((core + (hal * halo)), 9000);
+      Out.ar(out, sig * (env * (amp * 1.23)));
     }).add;
 
     // tape: warm triangle and sine with a soft 2nd harmonic, rounded off on
@@ -733,9 +739,10 @@ Engine_Estuary : CroneEngine {
       arg out, natIn, inIn, motifIn, react=0, src=4, listening=0, padBase=0.45;
       var d      = Lag.kr(react.clip(0, 1), 0.5);
       var sel    = src.round(1).clip(1, 4) - 1;
-      var wN     = Select.kr(sel, [1, 0, 0, 1]);
-      var wR     = Select.kr(sel, [0, 1, 0, 1]) * Lag.kr(listening.clip(0, 1), 1.0);
-      var wS     = Select.kr(sel, [0, 0, 1, 1]);
+      // a change of source glides over 1.5 s instead of stepping
+      var wN     = Lag.kr(Select.kr(sel, [1, 0, 0, 1]), 1.5);
+      var wR     = Lag.kr(Select.kr(sel, [0, 1, 0, 1]), 1.5) * Lag.kr(listening.clip(0, 1), 1.0);
+      var wS     = Lag.kr(Select.kr(sel, [0, 0, 1, 1]), 1.5);
       var water  = LagUD.kr(In.kr(natIn).linlin(0.3, 0.9, 0, 1), 3.0, 12.0) * (wN * d);
       var room   = LagUD.kr(In.kr(inIn).max(0.00001).ampdb.linlin(-48, -12, 0, 1), 2.5, 11.0) * (wR * d);
       var busyR  = LagUD.kr(In.kr(motifIn).max(0.00001).ampdb.linlin(-40, -20, 0, 1), 2.1, 10.5);
@@ -844,11 +851,15 @@ Engine_Estuary : CroneEngine {
       var old = padSynth;
       var xf = st[\pad_xfade].max(0.1);
       var f = msg[1..4].collect(_.midicps);
+      var syn;
       if(old.notNil, { old.set(\rel, xf); old.set(\gate, 0) });
-      padSynth = Synth(padDefs.clipAt(st[\pad_sound].asInteger - 1), [
+      syn = Synth(padDefs.clipAt(st[\pad_sound].asInteger - 1), [
         \out, padBus.index, \f1, f[0], \f2, f[1], \f3, f[2], \f4, f[3],
         \atk, xf, \rel, xf, \amp, 0.06, \bright, reactBus.subBus(4).asMap
       ], voiceGroup);
+      padSynth = syn;
+      // as the pedal: a freed pad is never set again
+      syn.onFree({ if(padSynth === syn, { padSynth = nil }) });
     });
 
     this.addCommand(\pedal, "fff", { |msg|
@@ -974,7 +985,10 @@ Engine_Estuary : CroneEngine {
         });
       }, {
         if(node.notNil, {
-          node.set(\level, 0, \fade, fade);
+          // a one-shot that has run out (or is about to) is not set again
+          if(node.isPlaying and: { (natOnceEnd[node] ? inf) > (SystemClock.seconds + 0.05) }, {
+            node.set(\level, 0, \fade, fade)
+          });
           SystemClock.sched((fade + 0.2), { if(node.isPlaying, { node.free }); nil });
           natSynths[slot] = nil;
           fx.removeAt(\moment);
@@ -985,12 +999,15 @@ Engine_Estuary : CroneEngine {
             \out, natBus.index, \buf, b, \ampOut, (natAmpBus.index + 2),
             \level, 0, \dur, (b.numFrames / b.sampleRate)
           ], voiceGroup);
+          NodeWatcher.register(syn, true);
+          natOnceEnd[syn] = SystemClock.seconds + (b.numFrames / b.sampleRate);
           natSynths[slot] = syn;
           natOnceUse[b] = (natOnceUse[b] ? 0) + 1;
           this.prNatRegister(slot);
           syn.set(\level, level, \fade, fade);
           syn.onFree({
             natOnceUse[b] = natOnceUse[b] - 1;
+            natOnceEnd.removeAt(syn);
             if(natSynths[2] === syn, { natSynths[2] = nil; fx.removeAt(\moment) });
             // a buffer a newer load replaced goes with its last one-shot
             if((natOnceUse[b] <= 0) and: { natBufs[2] !== b }, { natOnceUse.removeAt(b); b.free });

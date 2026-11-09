@@ -84,13 +84,12 @@ end)
 
 test("palettes: choice is seeded and leaves math.random alone", function()
   for seed = 1, 200 do
-    eq(P.choose(seed, nil), P.choose(seed, nil), "same seed")
-    eq(P.choose(seed, 3), P.choose(seed, 3), "same seed + last")
+    eq(P.for_track({}, seed), P.for_track({}, seed), "same seed")
+    eq(P.for_track({palette = 3}, seed), P.for_track({palette = 3}, seed), "same seed + last")
   end
   math.randomseed(42)
   local a = {math.random(), math.random()}
   math.randomseed(42)
-  P.choose(1234, 2)
   P.for_track({}, 99)
   local b = {math.random(), math.random()}
   eq(a[1], b[1], "random stream"); eq(a[2], b[2], "random stream")
@@ -112,7 +111,7 @@ test("palettes: a new track never repeats the last palette, and all appear", fun
   end
   -- even the worst case: every seed, from every last palette
   for seed = 1, 9999, 13 do
-    for last = 1, #P.PALETTES do assert(P.choose(seed, last) ~= last, "choose repeated") end
+    for last = 1, #P.PALETTES do assert(P.for_track({palette = last}, seed) ~= last, "repeated the last palette") end
   end
 end)
 
@@ -200,21 +199,24 @@ test("palettes: v3 adds the new voices, pads and palettes, none named like a vis
   for i = 10, #P.VOICES do assert((count[P.VOICES[i]] or 0) >= 4, P.VOICES[i] .. " in fewer than 4 palettes") end
 end)
 
-test("palettes: every palette comes round before any comes again, every voice soon", function()
+test("palettes: every palette comes round once a round (three full rounds), every voice soon", function()
+  local n = #P.PALETTES
   for start = 1, 40 do
-    local S, seen, voices, prev = {}, {}, {}, nil
-    for k = 1, #P.PALETTES do
-      local pal = P.for_track(S, start * 1000 + k)
-      assert(not seen[pal], "palette " .. pal .. " twice in one round (start " .. start .. ")")
-      assert(pal ~= prev, "back to back")
-      seen[pal], prev = true, pal
-      for _, v in ipairs(P.PALETTES[pal].voices) do voices[v] = true end
-      if k == 10 then
-        for _, v in ipairs(P.VOICES) do assert(voices[v], v .. " not heard in 10 tracks (start " .. start .. ")") end
+    local S, prev = {}, nil
+    for round = 1, 3 do
+      local seen, voices = {}, {}
+      for k = 1, n do
+        local pal = P.for_track(S, start * 1000 + round * 100 + k)
+        assert(not seen[pal], "palette " .. pal .. " twice in round " .. round .. " (start " .. start .. ")")
+        assert(pal ~= prev, "back to back across round " .. round)
+        seen[pal], prev = true, pal
+        for _, v in ipairs(P.PALETTES[pal].voices) do voices[v] = true end
+        if k == 10 and round == 1 then
+          for _, v in ipairs(P.VOICES) do assert(voices[v], v .. " not heard in 10 tracks (start " .. start .. ")") end
+        end
       end
+      for i = 1, n do assert(seen[i], "palette " .. i .. " skipped in round " .. round .. " (start " .. start .. ")") end
     end
-    -- the next round never opens with the last palette
-    assert(P.for_track(S, start * 1000 + 999) ~= prev, "repeat across rounds")
   end
 end)
 
