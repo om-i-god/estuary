@@ -31,6 +31,9 @@ local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 local function pick(t) return t[math.random(#t)] end
 local function plen(S) return S.phrase_len or 16 end
 local function tempo(S) return S.tempo or 72 end
+-- beats in one bar of the meter playing (4 at 4/4; 7/8 is 3.5): lengths set
+-- in minutes become bars of the bar's real duration
+local function bar_beats(S) return (S.bar8 or 8) / 2 end
 
 ------------------------------------------------------------------------
 -- set mode cycle
@@ -62,7 +65,7 @@ end
 local function start_cycle(S)
   S.cycle = (S.cycle or 0) + 1
   S.cycle_start = S.track_bar
-  S.cycle_bars = math.floor(math.random(20, 40) * tempo(S) / 4)
+  S.cycle_bars = math.floor(math.random(20, 40) * tempo(S) / bar_beats(S))
   schedule_swells(S)
 end
 
@@ -71,8 +74,10 @@ end
 ------------------------------------------------------------------------
 
 local function track_total(S)
-  return math.max(48, math.floor((S.track_minutes or 12) * tempo(S) / 4))
+  return math.max(48, math.floor((S.track_minutes or 12) * tempo(S) / bar_beats(S)))
 end
+
+C.track_total = track_total
 
 local function track_section(S)
   local total = track_total(S)
@@ -110,7 +115,7 @@ end
 ------------------------------------------------------------------------
 
 local function retire(S, slot)
-  S.motifs[slot] = M.new(slot)
+  S.motifs[slot] = M.new(slot, S.bar8)       -- cycles that suit the meter
   S.born[slot] = S.track_bar
 end
 

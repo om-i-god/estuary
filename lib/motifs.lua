@@ -8,12 +8,30 @@ local M = {}
 
 local DURS     = {2, 2, 2, 3, 4, 4, 6, 8}
 local CYCLES   = {14, 18, 22, 26, 30}          -- eighths = 2 x odd beats
+local PHASE_STEP = 4                           -- a phasing cycle grows / shrinks 2 beats
 local MAX_EVTS = 14                            -- grid shows one event per column
 local OCT_BASE = {0, 12, 0, 12}
 local LO, HI   = 55, 91
 local MAX_SPAN = 4                             -- tone indices: 5 rungs = one octave
 
 local function pick(t) return t[math.random(#t)] end
+
+-- bar-fitting cycles: whole bars that are also whole beats, inside the
+-- phasing range (7-15 beats). `bar8` = 8ths per bar. the step between them
+-- is the smallest whole-beat number of bars, in 8ths. nil at 4/4 (and for
+-- no meter): there the motifs only phase
+local function lcm2(n) return n % 2 == 0 and n or 2 * n end
+
+function M.fit_cycles(bar8)
+  if not bar8 or bar8 == 8 then return nil end
+  local st, out = lcm2(bar8), {}
+  for c = st, CYCLES[#CYCLES], st do
+    if c >= CYCLES[1] then out[#out + 1] = c end
+  end
+  return out, st
+end
+M.CYCLES = CYCLES
+
 local function sounding(e) return e.tone ~= nil or e.pass ~= nil end
 
 -- first/last sounding indices of an event list
@@ -72,7 +90,11 @@ local function steps_count(ev)
   return n
 end
 
-local function gen_events()
+-- `bar8`: the meter's 8ths per bar. off 4/4, about half the motifs take a
+-- bar-fitting cycle (one more draw per attempt; never at 4/4, so 4/4 draws
+-- exactly what it always has). returns events, cycle, fit
+local function gen_events(bar8)
+  local fits = M.fit_cycles(bar8)
   for _ = 1, 200 do
     local n = math.random(3, 7)
     local durs = {}
@@ -90,8 +112,15 @@ local function gen_events()
     local sum = 0
     for _, d in ipairs(durs) do sum = sum + d end
     local mid = math.random() < 0.5 and pick({2, 2, 3, 4}) or 0   -- optional inner rest
+    local set, fit = CYCLES, false
+    if fits and math.random() < 0.5 then set, fit = fits, true end
     local ok = {}
-    for _, c in ipairs(CYCLES) do if c >= sum + mid + 2 then ok[#ok + 1] = c end end
+    for _, c in ipairs(set) do if c >= sum + mid + 2 then ok[#ok + 1] = c end end
+    if fit and #ok == 0 then
+      -- too long for any bar-fitting cycle: this one phases
+      fit = false
+      for _, c in ipairs(CYCLES) do if c >= sum + mid + 2 then ok[#ok + 1] = c end end
+    end
     if #durs >= 3 and #ok > 0 then
       -- bias toward the shorter fits
       local cycle = ok[math.min(#ok, math.random(#ok) + (math.random() < 0.5 and 0 or 1))]
@@ -138,20 +167,25 @@ local function gen_events()
       end
       local lo, hi = tone_range(evs)
       if #evs <= MAX_EVTS and passes_ok(evs) and hi - lo <= MAX_SPAN
-         and max_move(evs) <= 3 then return evs, cycle end
+         and max_move(evs) <= 3 then return evs, cycle, fit end
     end
   end
   error("motif generation failed")
 end
 
-function M.new(slot)
+-- `bar8`: 8ths per bar of the meter now playing (nil / 8 = 4/4)
+function M.new(slot, bar8)
   slot = slot or 1
-  local evs, cycle = gen_events()
+  local evs, cycle, fit = gen_events(bar8)
+  local _, fit_step = M.fit_cycles(bar8)
   local base = OCT_BASE[((slot - 1) % 4) + 1]
   local shift = math.random() < 0.25 and (base == 0 and 12 or -12) or 0
   local side = (slot % 2 == 0) and 1 or -1
   return {
     events = evs, cycle = cycle,
+    -- the cycle's class: bar-fitting (whole bars) or phasing (odd beats).
+    -- mutations keep it, stepping the cycle by `cstep` 8ths
+    fit = fit, cstep = fit and fit_step or PHASE_STEP,
     oct   = base + shift,
     pan   = side * (0.2 + math.random() * 0.4),
     voice = ((slot - 1) % 4) + 1,
@@ -187,14 +221,17 @@ local function mut_swap(m)
   return true
 end
 
--- a rest grows/shrinks by 4 eighths (2 beats): the only step that keeps the
--- cycle an odd number of beats. never below the shortest cycle (7 beats)
+-- a rest grows/shrinks by the cycle's step: 4 eighths (2 beats) keeps a
+-- phasing cycle an odd number of beats; a bar-fitting one moves by whole
+-- bars (its `cstep`). never below the shortest cycle (7 beats) nor past the
+-- longest (15)
 local function mut_rest(m)
   local opts = {}
+  local st = m.cstep or PHASE_STEP
   for i, e in ipairs(m.events) do
     if not sounding(e) then
-      if e.dur - 4 >= 2 and m.cycle - 4 >= CYCLES[1] then opts[#opts + 1] = {i, -4} end
-      if m.cycle + 4 <= CYCLES[#CYCLES] then opts[#opts + 1] = {i, 4} end
+      if e.dur - st >= 2 and m.cycle - st >= CYCLES[1] then opts[#opts + 1] = {i, -st} end
+      if m.cycle + st <= CYCLES[#CYCLES] then opts[#opts + 1] = {i, st} end
     end
   end
   if #opts == 0 then return false end
