@@ -263,10 +263,10 @@ test("palettes: v4 adds ocarina, bowl, musicbox, chime, hum, bowed and six palet
   eq(#P.VOICES, 22, "22 voices"); eq(#P.PADS, 10, "10 pads"); eq(#P.PALETTES, 26, "26 palettes")
   local new_p = {"pavilion", "conservatory", "observatory", "arboretum", "aquarium", "gallery"}
   for k, n in ipairs(new_p) do eq(P.NAMES[20 + k], n, "new palette " .. k) end
-  -- no palette added since v3 is named like a place (all twenty-eight)
+  -- no palette added since v3 is named like a place (all twenty-six)
   local places = {"ripples", "horizon", "postcards", "rain", "tide", "drift", "reeds", "koi", "kelp", "fireflies",
                   "mist", "flock", "brook", "rockpool", "dew", "cascade", "mangrove", "aurora", "shoal", "paddies",
-                  "echo bridge", "echo_bridge", "confluence", "delta", "onsen", "lotus", "glacier", "pod", "wellspring"}
+                  "delta", "onsen", "lotus", "glacier", "pod", "wellspring"}
   for _, t in ipairs(places) do
     for i = 10, #P.PALETTES do assert(P.NAMES[i] ~= t, "palette " .. t .. " is a place's name") end
   end

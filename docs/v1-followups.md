@@ -141,4 +141,7 @@ Built 2026-11-09 (`docs/superpowers/specs/2026-11-08-estuary-v6-design.md`, part
 - Whether each new place reads at arm's length as itself: the braided channels in delta, the steam and snow caps in onsen, the leaves and flowers in lotus, the ice face and its blue bands in glacier, the spouts along the horizon in pod, the sand-boils in wellspring.
 - The weakest new inputs sit near the 0.03 floor (delta and onsen out_hi, lotus note, wellspring bar): check they read on real material, not only on the sim's fake polls.
 - Lit area: delta, onsen and wellspring's busiest peak frames reach about 34-35% lit; check they still feel calm.
-- The theme name with K1 held: the longest names are now "echo bridge 21/28" and "wellspring 28/28". Check the name stays clear of the screen's right half.
+- The theme name with K1 held: the longest is now "wellspring 26/26". Check the name stays clear of the screen's right half.
+
+## Two places taken out (2026-11-10)
+echo bridge and confluence are gone; the places after paddies moved up two (delta is now 21, wellspring 26). A pset saved with one of the six v6 places now opens two places further along the list, and one saved on echo bridge or confluence opens delta or onsen.
