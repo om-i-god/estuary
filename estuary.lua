@@ -136,10 +136,23 @@ end
 -- midi either. vel is 0..1 and already carries the part's gain.
 local PAD_VEL = 0.55
 
+-- octave: the master "octave" plus the part's own (pad / pedal / motif1-4),
+-- applied only where notes leave for the engine, midi and crow; the harmony,
+-- the motifs' spacing and the picture never see it. folded back by octaves
+-- into 24..108 so nothing drops out of hearing or past the top
+local function shift(part, n)
+  local sh = 12 * (params:get("octave") + params:get(part .. "_oct"))
+  if sh == 0 then return n end
+  n = n + sh
+  while n < 24 do n = n + 12 end
+  while n > 108 do n = n - 12 end
+  return n
+end
+
 local function pad_midi(notes, g)
   O.release("pad")
   if g <= 0.02 or S.muted.pad then return end
-  for i = 1, 4 do O.note("pad", notes[i], nil, i, PAD_VEL * g) end
+  for i = 1, 4 do O.note("pad", shift("pad", notes[i]), nil, i, PAD_VEL * g) end
 end
 
 local function emit(part, notes, vel, dur_beats, m)
@@ -150,15 +163,18 @@ local function emit(part, notes, vel, dur_beats, m)
       -- the pad's character: the palette's, or the pinned one; it changes
       -- with this voicing (crossfaded), never as a cut
       tweak("pad_sound", PAL.pad_sound(params:get("pad_sound"), S.palette))
-      engine.pad(notes[1], notes[2], notes[3], notes[4])
+      engine.pad(shift("pad", notes[1]), shift("pad", notes[2]),
+                 shift("pad", notes[3]), shift("pad", notes[4]))
     end
     pad_midi(notes, S.gain.pad or 0)
   elseif part == "pedal" then
+    notes = shift("pedal", notes)
     local internal = O.route("pedal")
     if internal then engine.pedal(notes, vel, dur_s) end
     O.note("pedal", notes, dur_s, nil, vel)
   else
     local slot = tonumber(part:sub(6))
+    notes = shift(part, notes)
     local internal = O.route("motif", slot)
     if internal then
       local voice = PAL.motif_voice(params:get(part .. "_voice"), S.palette, slot)
@@ -837,6 +853,26 @@ local function setup_params()
     S.voicing = v
     if ready then H.new_prog(S); H.retarget(S, true) end
   end)
+
+  -- octaves: the master moves every pitched part; each part's own adds on
+  -- top. the pad and the pedal move now, the motifs from their next note
+  local function signed(p) local v = p:get(); return v > 0 and "+" .. v or tostring(v) end
+  local function reoctave()
+    if not (ready and S.playing) then return end
+    S.chord_changed = false
+    emit("pad", S.chord)
+    pedal_pc_last = nil
+    pedal_follow()
+  end
+  params:add_number("octave", "octave", -2, 2, 0, signed)
+  params:set_action("octave", reoctave)
+  params:add_number("pad_oct", "pad octave", -2, 2, 0, signed)
+  params:set_action("pad_oct", reoctave)
+  params:add_number("pedal_oct", "pedal octave", -2, 2, 0, signed)
+  params:set_action("pedal_oct", reoctave)
+  for i = 1, 4 do
+    params:add_number("motif" .. i .. "_oct", "motif " .. i .. " octave", -2, 2, 0, signed)
+  end
 
   params:add_separator("MIX")
   params:add_number("space", "space (echo + reverb)", 0, 100, 50)
