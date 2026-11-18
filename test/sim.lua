@@ -69,18 +69,23 @@ engine = setmetatable({}, {__index = function(_, k)
       local voice, _, _, dur_s = ...
       assert(voice >= 1 and voice <= NVOICES and voice % 1 == 0, "note voice " .. voice .. " not an engine voice")
       VOICES_USED[voice] = true
-      local b = 60 / TEMPO
+      local b = felt_beat()
       assert(dur_s >= 0.05 and dur_s <= 4 * b + 1e-6, "note dur " .. dur_s .. " s out of range at " .. TEMPO .. " bpm")
     elseif k == "pedal" then
       local _, _, dur_s = ...
-      assert(dur_s <= 18 * 60 / TEMPO + 1e-6, "pedal dur " .. dur_s .. " s too long")
+      assert(dur_s <= 18 * felt_beat() + 1e-6, "pedal dur " .. dur_s .. " s too long")
     end
     if k == "tweak" then
       local key, val = ...
       if key == "echo_time" then
-        local beats = val / (60 / TEMPO)
+        -- a division of the felt beat (time feel), halved while past 3.5 s
+        local beats = val / felt_beat()
         local ok = false
-        for _, d in ipairs({0.5, 1, 1.5, 2}) do if math.abs(beats - d) < 1e-6 then ok = true end end
+        for _, d in ipairs({0.5, 1, 1.5, 2}) do
+          local e = d
+          while e * felt_beat() > 3.5 do e = e / 2 end
+          if math.abs(beats - e) < 1e-6 then ok = true end
+        end
         assert(ok and val <= 3.5, "echo_time " .. val .. " s is not a clean division at " .. TEMPO .. " bpm")
       end
       if not TWEAKS[key] then error("engine.tweak: unknown key '" .. key .. "'", 2) end
@@ -127,6 +132,11 @@ end
 
 -- params ---------------------------------------------------------------
 local P = {order = {}, defs = {}}
+-- the script's felt beat: the clock's beat x its time feel (normal / half / double)
+function felt_beat()
+  local t = P.defs.time
+  return 60 / TEMPO * (({1, 2, 0.5})[t and t.v or 1] or 1)
+end
 params = {}
 local function add(id, def) def.id = id; P.defs[id] = def; table.insert(P.order, id) end
 function params:add_separator() end
@@ -189,12 +199,14 @@ function clock.sync(d)
   local r = SYNCS[cur_id] or {n = 0, odd = nil}
   SYNCS[cur_id] = r
   r.n = r.n + 1
+  -- (in felt beats: half time syncs to 2x the clock's beats, double to 0.5x)
+  local m = felt_beat() / (60 / TEMPO)
   if r.n == 1 then
     r.first = d
-    r.bar = SIM_S and SIM_S.bar8 / 2 or 4
+    r.bar = (SIM_S and SIM_S.bar8 / 2 or 4) * m
   elseif r.first == r.bar then
-    if d ~= 1 / 2 then r.odd = d end
-    STEP_BEATS = STEP_BEATS + d
+    if d ~= 1 / 2 * m then r.odd = d end
+    STEP_BEATS = STEP_BEATS + d / m
   end
   coroutine.yield()
 end
@@ -434,7 +446,7 @@ local function ears()
   end
 end
 local function tick_all()
-  VT = VT + 60 / TEMPO / 2
+  VT = VT + felt_beat() / 2
   ears()
   if LISTEN and polls.in_key then
     local k, a = feed(S.track_bar)

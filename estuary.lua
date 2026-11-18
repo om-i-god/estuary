@@ -61,6 +61,7 @@ local PHRASES        = {8, 16, 32}
 ------------------------------------------------------------------------
 
 local S = {
+  tmul = 1,
   playing = false, step = 0, track_bar = 0,
   bloom = 0.05, nudge = 0,
   section = "-", progress = 0, total_bars = nil,
@@ -74,6 +75,12 @@ local S = {
   chord = {48, 55, 62, 64}, chord_degree = 1, chord_label = "I",
   gain = {}, muted = {}, soloed = {},
 }
+
+-- time feel: 1 normal, 2 half time, 0.5 double time. the script's own beat
+-- is the clock's beat x tmul, so the grid, note lengths, echo and track
+-- length all follow; the clock (and anything else synced to it) doesn't
+local TIME_NAMES, TIME_MUL = {"normal", "half time", "double time"}, {1, 2, 0.5}
+local function beat_sec() return clock.get_beat_sec() * S.tmul end
 
 local main_clock, draw_clock, listen_clock
 local in_key, in_amp = nil, 0       -- the engine's key tracker, polled
@@ -156,7 +163,7 @@ local function pad_midi(notes, g)
 end
 
 local function emit(part, notes, vel, dur_beats, m)
-  local dur_s = (dur_beats or 0) * clock.get_beat_sec()
+  local dur_s = (dur_beats or 0) * beat_sec()
   if part == "pad" then
     local internal = O.route("pad")
     if internal then
@@ -245,12 +252,15 @@ end
 ------------------------------------------------------------------------
 
 local function apply_bar()
-  local beat  = clock.get_beat_sec()
+  local beat  = beat_sec()
   local tone  = params:get("tone") / 100
   local space = params:get("space") / 100
   -- a water swell closes the filters a little
   tweak("tone", tone * (1 - 0.25 * N.level))
-  tweak("echo_time", ECHO_DIVS[params:get("echo_div")] * beat)
+  -- (half time at a slow tempo can pass the engine's 4 s echo: halve it, on the grid)
+  local echo_t = ECHO_DIVS[params:get("echo_div")] * beat
+  while echo_t > 3.5 do echo_t = echo_t / 2 end
+  tweak("echo_time", echo_t)
   -- at 1/8 a long feedback tail turns every note into a run of 8ths
   local div = params:get("echo_div")
   tweak("echo_fb", div == 1 and math.min(0.6, params:get("echo_fb")) or params:get("echo_fb"))
@@ -326,7 +336,7 @@ local function step_motif(i)
   if lean then vel = math.min(0.8 * g, vel * lean) end
   emit(k, midi, vel, dur_beats, m)
   if S.probe then S.probe(i, midi, ev, dur_beats, vel) end
-  VIS.event("note", i, midi, dur_beats * clock.get_beat_sec())
+  VIS.event("note", i, midi, dur_beats * beat_sec())
 end
 
 -- a new meter takes over on a barline (or at once while stopped). the step
@@ -348,8 +358,8 @@ local function play_step()
 
   if s == 0 then
     apply_meter()                 -- a waiting meter lands on this barline
-    S.tempo = clock.get_tempo()
-    S.bar_sec = clock.get_beat_sec() * S.bar8 / 2
+    S.tempo = clock.get_tempo() / S.tmul
+    S.bar_sec = beat_sec() * S.bar8 / 2
     local r = C.bar(S)            -- also runs nature and harmony
     S.nature_state = N.state
     S.moment_active = N.moment_active
@@ -389,12 +399,12 @@ end
 ------------------------------------------------------------------------
 
 local function loop(my)
-  clock.sync(S.bar8 / 2)          -- start on a bar (in beats)
+  clock.sync(S.bar8 / 2 * S.tmul) -- start on a bar (in beats)
   if S.playing and my == loop_gen then O.start() end
   while true do
     if not S.playing or my ~= loop_gen then return end
     play_step()
-    clock.sync(1 / 2)             -- an 8th
+    clock.sync(1 / 2 * S.tmul)    -- an 8th
   end
 end
 
@@ -803,6 +813,14 @@ local function setup_params()
   params:add_option("phrase_len", "phrase length (bars)", {"8", "16", "32"}, 2)
   params:set_action("phrase_len", function(v) S.phrase_len = PHRASES[v] end)
   -- the time signature; lands on the next barline (at once while stopped)
+  params:add_option("time", "time feel", TIME_NAMES, 1)
+  params:set_action("time", function(v)
+    S.tmul = TIME_MUL[v]
+    if ready then                 -- (the bar refreshes these too)
+      S.tempo = clock.get_tempo() / S.tmul
+      S.bar_sec = beat_sec() * S.bar8 / 2
+    end
+  end)
   params:add_option("meter", "meter", MT.NAMES, MT.DEFAULT)
   params:set_action("meter", function(v)
     if v == S.meter and not S.meter_next then return end
