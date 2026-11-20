@@ -809,6 +809,47 @@ do
 end
 if WALK and BARS >= 100 and (WALKED or 0) == 0 then extra[#extra + 1] = "meter walk never changed the meter" end
 print(string.format("meter %s (%d 8ths a bar)%s", MT.name(S.meter), S.bar8, WALK and (", walked " .. (WALKED or 0) .. " times") or ""))
+-- K1+K3: the voices screen. holding K1 and K3 (either first) is never a K3
+-- tap, the screen names the voices in use, and K1 alone still turns themes
+do
+  local function up(name)
+    for j = 1, 200 do
+      local n, v = debug.getupvalue(key, j)
+      if not n then break end
+      if n == name then return v end
+    end
+  end
+  local texts = {}
+  local real = screen
+  screen = setmetatable({text = function(s) texts[#texts + 1] = s end,
+    text_extents = function() return 20, 6 end}, {__index = function() return function() end end})
+  key(1, 1); key(3, 1)
+  assert(up("k3_used") == true, "K1 then K3: the K3 release would be a tap")
+  redraw()
+  local shown = table.concat(texts, "|")
+  local PALm = include("lib/palettes")
+  assert(shown:find(PALm.NAMES[S.palette], 1, true), "voices screen: no palette name in " .. shown)
+  for slot = 1, 4 do
+    local nm = PALm.VOICES[PALm.motif_voice(params:get("motif" .. slot .. "_voice"), S.palette, slot)]
+    assert(shown:find(slot .. " " .. nm, 1, true), "voices screen: motif " .. slot .. " (" .. nm .. ") missing in " .. shown)
+  end
+  local p0 = params:get("palette")
+  enc(1, 1)
+  assert(params:get("palette") == p0 + 1, "K1+K3+E1 didn't step the palette")
+  assert(S.palette == p0, "the stepped-to palette didn't apply at once")
+  enc(1, -1)
+  assert(params:get("palette") == p0, "K1+K3+E1 back didn't return")
+  key(3, 0); key(1, 0)
+  key(3, 1); key(1, 1)
+  assert(up("k3_used") == true, "K3 then K1: the K3 release would be a tap")
+  key(1, 0); key(3, 0)
+  local th = params:get("theme")
+  key(1, 1); enc(1, th > 1 and -1 or 1); key(1, 0)   -- toward the middle: the ends clamp
+  assert(params:get("theme") ~= th, "K1+E1 no longer turns the theme")
+  params:set("theme", th)
+  screen = real
+  print("voices screen ok")
+end
 local ok, fails = R.report()
 for _, f in ipairs(extra) do fails[#fails + 1] = f; ok = false end
 if ok then

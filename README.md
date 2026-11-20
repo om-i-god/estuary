@@ -146,6 +146,7 @@ every change moves slowly (it rises over a second or so and settles back over se
 | **hold K3** + E2 / E3 | tempo / set ↔ track |
 | **hold K1** + E1 | visual theme |
 | **hold K1** + E2 | encoder page |
+| **hold K1 + K3** | the voices in use: the palette (and whether it's auto), the four motif voices and the pad. a part set by hand in PARAMS > SOUND is marked `*`, a silent part is dim. turn **E1** to change the palette (all the way down is auto) |
 
 a tap is a quick press: hold K2 or K3 longer than about half a second, or turn an encoder while it is down, and letting go does nothing.
 

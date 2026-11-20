@@ -17,6 +17,7 @@
 -- hold K2: E2 key  E3 mode
 -- hold K3: E2 bpm  E3 set/track
 -- hold K1: E1 theme  E2 page
+-- hold K1+K3: the voices in use  E1 palette
 -- parts page: K2 mute  K3 solo
 --
 -- grid: row 1 phrase, row 2 bloom (press to pull it),
@@ -572,6 +573,7 @@ local function on_parts() return PAGES[page].name == "parts" end
 function key(n, z)
   if n == 1 then
     k1 = z == 1
+    if k1 and k3 then k3_used = true end
   elseif n == 2 then
     if z == 1 then
       k2, k2_used, k2_t = true, false, util.time()
@@ -589,6 +591,7 @@ function key(n, z)
   elseif n == 3 then
     if z == 1 then
       k3, k3_used, k3_t = true, false, util.time()
+      if k1 then k3_used = true end   -- K1+K3: the voices screen, not a tap
       if k2 then
         if S.playing then stop() else start() end
         k2_used, k3_used = true, true
@@ -603,7 +606,10 @@ function key(n, z)
 end
 
 function enc(n, d)
-  if k1 and n == 1 then
+  if k1 and k3 then
+    if n == 1 then params:delta("palette", d) end
+    return
+  elseif k1 and n == 1 then
     params:delta("theme", d)
   elseif k1 and n == 2 then
     page = clamp(page + d, 1, #PAGES)
@@ -662,7 +668,38 @@ local function text_box(x, y, s, lvl, right)
   screen.text(s)
 end
 
+-- held K1+K3: the voices in use (E1 changes the palette). "*" marks a part
+-- set by hand in PARAMS > SOUND, which the palette doesn't reach; a part
+-- that is silent right now is drawn dim
+local function draw_voices()
+  screen.level(0)
+  screen.rect(0, 0, 128, 64)
+  screen.fill()
+  local pi = S.palette or 1
+  local auto = params:get("palette") == 1
+  screen.level(15)
+  screen.move(1, 7)
+  screen.text(PAL.NAMES[pi] .. " " .. pi .. "/" .. #PAL.NAMES .. (auto and " (auto)" or ""))
+  local any_hand = false
+  local function row(y, label, name, hand, key)
+    any_hand = any_hand or hand
+    screen.level(((S.gain[key] or 0) > 0.01) and 15 or 5)
+    screen.move(1, y)
+    screen.text(label .. " " .. name .. (hand and "*" or ""))
+  end
+  for slot = 1, 4 do
+    local v = params:get("motif" .. slot .. "_voice")
+    row(9 + slot * 8, tostring(slot), PAL.VOICES[PAL.motif_voice(v, pi, slot)], v > 1, "motif" .. slot)
+  end
+  local pv = params:get("pad_sound")
+  row(49, "pad", PAL.PADS[PAL.pad_sound(pv, pi)], pv > 1, "pad")
+  screen.level(4)
+  screen.move(1, 62)
+  screen.text("E1 palette" .. (any_hand and "  * set by hand" or ""))
+end
+
 local function draw_hud()
+  if k1 and k3 then return draw_voices() end
   -- overlay: 1 full, 2 minimal (key + chord), 3 off (hints and messages only)
   local hud = params:get("hud")
 
