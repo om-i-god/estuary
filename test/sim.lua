@@ -761,6 +761,11 @@ do
     for v = 1, NVOICES do if not VOICES_USED[v] then miss[#miss + 1] = v end end
     extra[#extra + 1] = "only " .. nv .. " of " .. NVOICES .. " voices heard across several tracks (missing " .. table.concat(miss, " ") .. ")"
   end
+  -- set mode on auto: each cycle after the first brings a new palette, so a
+  -- set that reaches its second cycle hears more than one palette's voices
+  if PMODE == 1 and (S.palette_pin or 0) == 0 and (S.cycle or 1) >= 2 and nv <= 4 then
+    extra[#extra + 1] = "set reached cycle " .. S.cycle .. " but only " .. nv .. " voices heard (palette never changed)"
+  end
   local np = 0
   for _ in pairs(PADS_USED) do np = np + 1 end
   print(string.format("palette pads heard: %d of %d", np, NPADS))

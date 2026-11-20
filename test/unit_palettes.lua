@@ -328,3 +328,29 @@ test("palettes: adding a release keeps the earlier palettes' run (an old seed's 
   P.PALETTES = all
   assert(checked > 200 * 4, "too few tracks compared")
 end)
+
+test("palettes: on auto each set cycle draws a new palette, a pin stays", function()
+  local S = {palette_pin = 0}
+  P.for_track(S, 42)
+  local seen, prev = {[S.palette] = true}, S.palette
+  for c = 2, #P.PALETTES do
+    local pal, changed = P.for_cycle(S, 42, c)
+    assert(changed and pal ~= prev, "cycle " .. c .. " kept palette " .. prev)
+    seen[pal] = true
+    prev = pal
+  end
+  local n = 0
+  for _ in pairs(seen) do n = n + 1 end
+  eq(n, #P.PALETTES, "one round of cycles plays every palette")
+  -- same seed + cycle -> same draw (no math.random)
+  local A, B = {palette_pin = 0}, {palette_pin = 0}
+  P.for_track(A, 7); P.for_track(B, 7)
+  math.randomseed(1); local a = P.for_cycle(A, 7, 2)
+  math.randomseed(99); local b = P.for_cycle(B, 7, 2)
+  eq(a, b, "seeded")
+  -- pinned: nothing moves
+  P.pin(S, 3)
+  local pal, changed = P.for_cycle(S, 42, 99)
+  eq(pal, 2, "pinned palette")
+  assert(not changed, "a pin never changes")
+end)

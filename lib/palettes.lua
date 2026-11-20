@@ -140,6 +140,16 @@ function P.for_track(S, seed)
   return S.palette
 end
 
+-- set mode: each new cycle of the endless set is its next "track". on auto
+-- it draws a fresh palette from the same bag (seeded by the track seed and
+-- the cycle, so still no math.random); a pinned palette stays
+function P.for_cycle(S, seed, cycle)
+  if (S.palette_pin or 0) > 0 then return S.palette, false end
+  local before = S.palette
+  S.palette = draw(S, (math.floor(seed or 1) * 1009 + cycle) % 4294967296)
+  return S.palette, S.palette ~= before
+end
+
 -- the palette param (1 auto, then PALETTES): pin one now, or go back to
 -- auto. either way the next rebuild picks afresh (a palette chosen under a
 -- pin is not that seed's own)

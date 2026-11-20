@@ -361,6 +361,10 @@ local function play_step()
     S.tempo = clock.get_tempo() / S.tmul
     S.bar_sec = beat_sec() * S.bar8 / 2
     local r = C.bar(S)            -- also runs nature and harmony
+    if S.palette_changed then
+      S.palette_changed = false
+      flash("palette " .. PAL.NAMES[S.palette])
+    end
     S.nature_state = N.state
     S.moment_active = N.moment_active
     if r == "stop" then
@@ -981,9 +985,12 @@ end
 local saved_screensaver_event
 
 function init()
-  saved_screensaver_event = metro[36].event
-  metro[36].event = function() end
-  metro[36]:stop()
+  local ss = metro and metro[36]
+  if ss then
+    saved_screensaver_event = ss.event
+    ss.event = function() end
+    ss:stop()
+  end
   setup_params()
   first_load_tempo()
   params:bang()

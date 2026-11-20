@@ -72,6 +72,11 @@ end
 
 local function start_cycle(S)
   S.cycle = (S.cycle or 0) + 1
+  -- every cycle after the first is the set's next track: a new palette
+  if S.cycle > 1 and S.mode_play ~= 2 then
+    local _, changed = PAL.for_cycle(S, S.seed, S.cycle)
+    if changed then S.palette_changed = true end
+  end
   S.cycle_start = S.track_bar
   S.cycle_bars = math.floor(math.random(20, 40) * tempo(S) / bar_beats(S))
   schedule_swells(S)
